@@ -1,0 +1,77 @@
+# Simulation Parameters
+simulation:
+  dt: 0.1              # Simulation time step (seconds)
+  num_episodes: 1      # Number of episodes to run
+  max_steps: 1000      # Max steps per episode
+  mode: 'multi'        # 'single' or 'multi'
+  num_agents: 3
+  render_mode: 'human' # 'human', 'rgb_array', or None
+  render_fps: 60
+
+# Training Parameters
+training:
+  num_episodes: 1000   # Number of training episodes
+  save_frequency: 100  # Save model every N episodes
+  render_mode: None    # Usually None during training for speed
+  render_fps: 30
+
+# Track Parameters (Example for Oval)
+track:
+  type: 'oval'
+  length: 100.0               # Length of straight sections
+  radius: 30.0                # Radius of curved sections
+  width: 10.0                 # Total width of the track (2 * omega_r from image)
+  start_line_x: 0.0           # X-coordinate of the start/end line center
+  start_lane: 'bottom'   # 'top' or 'bottom'
+
+# Environment Specific Configuration
+environment:
+  # List the observation components to include in the observation space
+  # Available keys (can be expanded): 'x', 'y', 'v', 'theta', 'steer_angle', 'dist_to_centerline', ...
+  observation_components: 
+    - 'x'
+    - 'y'
+    - 'v'
+    - 'theta'
+
+# Car Parameters
+car:
+  wheelbase: 2.5         # L (meters)
+  mass: 1500             # Mass (kg)
+  max_speed: 20.0        # m/s
+  min_accel: -5.0        # m/s^2 (braking)
+  max_accel: 3.0         # m/s^2
+  max_steer_angle: 0.6   # radians (~34 degrees)
+  width: 1.8             # For collision/visualization
+  length: 4.0            # For collision/visualization
+  collision_radius: 1.5  # Simplified collision check radius
+
+  # --- More Realistic Physics Params --- 
+  coeff_drag: 0.8         # Air resistance coefficient (Cd * A * rho / 2)
+  coeff_rolling_resistance: 60.0 # Rolling resistance coefficient
+  coeff_friction: 1.1      # Combined tire longitudinal friction coefficient (relative)
+  coeff_cornering_stiffness: 15.0 # Tire lateral stiffness factor (simplified grip)
+  max_engine_force: 4500   # Max forward force from engine (N)
+  max_brake_force: 6000    # Max backward force from brakes (N)
+  gravity: 9.81          # Acceleration due to gravity (m/s^2)
+  # ------------------------------------ 
+
+# Agent Configuration (Example for 3 agents)
+agents:
+  agent_0:
+    type: 'rl'           # rl, mpc, human, random
+    model_path: 'models/agent0_policy.zip' # Path for RL model
+    start_pos_idx: 0     # Index for starting position
+  agent_1:
+    type: 'human'
+    start_pos_idx: 1
+  agent_2:
+    type: 'random'
+    start_pos_idx: 2
+
+
+# RL Hyperparameters (Example - adjust based on library/algo)
+rl:
+  learning_rate: 0.0003
+  discount_factor: 0.99
+  # ... other hyperparameters
