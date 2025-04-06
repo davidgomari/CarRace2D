@@ -154,6 +154,8 @@ To add or remove observations from the environment:
    ```
 
 3. **Implement Observation Calculation:**
+   - If the new observation is simple car data (like 'steer_angle', 'accel'), make sure `car.get_data()` returns it.
+   - If it requires track info (like `dist_to_centerline`), make sure the calculation method exists in `track.py` (or `environment.py`) and that `environment._get_obs` calls it.
    - In `environment.py`, find the `_get_obs` method
    - Add logic to calculate your new observation:
    ```python
@@ -166,6 +168,8 @@ To add or remove observations from the environment:
                    # Add your calculation logic here
                    obs_dict[component] = np.array([value], dtype=np.float32)
    ```
+4. **Update Agents (Optional):**
+   - Modify only the agents that need to use the new/removed observation component. They can access it via `observation['component_name']`.
 
 ### Customizing Car Physics
 
