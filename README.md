@@ -13,7 +13,6 @@ A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It 
 
 ## Visuals
 
-![Main Menu](/images/screenshot_main_menu.jpg)
 ![Simulation - Multi Agent Mode](/images/screenshot_simulation_multiagent.jpg)
 
 ## Installation
