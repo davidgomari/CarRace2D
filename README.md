@@ -13,15 +13,8 @@ A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It 
 
 ## Visuals
 
-*(Optional: Add screenshots or GIFs here to showcase the menu and simulation)*
-
-```
 ![Main Menu](/images/screenshot_main_menu.jpg)
-```
-
-```
 ![Simulation - Multi Agent Mode](/images/screenshot_simulation_multiagent.jpg)
-```
 
 ## Installation
 
@@ -128,4 +121,4 @@ Modify these files to customize the simulation environment, agent behaviors, and
 
 *   The Reinforcement Learning training and agent inference parts (`training.py`, parts of `agents/rl_agent.py`) are currently placeholders and need to be implemented using a specific RL library (like Stable Baselines3, Tianshou, or a custom implementation). The current `RLAgent` returns a default action.
 *   The car physics model is a simplified kinematic bicycle model with added force dynamics. It may not perfectly reflect real-world vehicle behavior.
-*   Ensure the `images/main_menu_background.png` file is present for the main menu background.
+*   Ensure the `images/main_menu_background.png` file is present for the main menu background. 
