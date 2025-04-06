@@ -15,12 +15,13 @@ class MainMenu:
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Racing Simulation")
         
-        # Colors
-        self.background_color = (50, 50, 50)
+        # Colors (Use RGBA for transparency)
+        self.background_color = (50, 50, 50) # Fallback color
         self.text_color = (255, 255, 255)
-        self.button_color = (70, 70, 70)
-        self.button_hover_color = (100, 100, 100)
+        self.button_color = (70, 70, 70, 230)  # Added alpha (0-255, lower is more transparent)
+        self.button_hover_color = (100, 100, 100, 210) # Slightly less transparent on hover
         self.button_text_color = (255, 255, 255)
+        self.button_border_color = (220, 220, 220, 200) # Border color with alpha
         self.section_color = (60, 60, 60)
         
         # Load background image
@@ -28,9 +29,9 @@ class MainMenu:
         self._load_background_image()
         
         # Fonts
-        self.title_font = pygame.font.SysFont(None, 48)
+        self.title_font = pygame.font.SysFont(None, 60) # Slightly larger title
         self.section_font = pygame.font.SysFont(None, 36)
-        self.button_font = pygame.font.SysFont(None, 28)
+        self.button_font = pygame.font.SysFont(None, 32) # Slightly larger button text
         
         # Menu state
         self.state = "main"  # main, single_agent_type
@@ -85,46 +86,75 @@ class MainMenu:
     
     def _create_buttons(self):
         """Create button definitions for the menu."""
+        button_width = 250 # Slightly wider buttons
+        button_height = 55
+        center_x = self.width // 2 - button_width // 2
+        
         buttons = {
             "main": [
-                {"text": "Simulation", "rect": pygame.Rect(300, 200, 200, 50), "action": "simulation"},
-                {"text": "Training", "rect": pygame.Rect(300, 300, 200, 50), "action": "training"},
-                {"text": "Exit", "rect": pygame.Rect(300, 400, 200, 50), "action": "exit"}
+                # Adjusted Y positions and width
+                {"text": "Simulation", "rect": pygame.Rect(center_x, 280, button_width, button_height), "action": "simulation"},
+                {"text": "Training", "rect": pygame.Rect(center_x, 360, button_width, button_height), "action": "training"},
+                {"text": "Exit", "rect": pygame.Rect(center_x, 440, button_width, button_height), "action": "exit"}
             ],
             "simulation": [
-                {"text": "Single Agent", "rect": pygame.Rect(300, 200, 200, 50), "action": "single_agent"},
-                {"text": "Multi Agent", "rect": pygame.Rect(300, 300, 200, 50), "action": "multi_agent"},
-                {"text": "Back", "rect": pygame.Rect(300, 400, 200, 50), "action": "main"}
+                {"text": "Single Agent", "rect": pygame.Rect(center_x, 280, button_width, button_height), "action": "single_agent"},
+                {"text": "Multi Agent", "rect": pygame.Rect(center_x, 360, button_width, button_height), "action": "multi_agent"},
+                {"text": "Back", "rect": pygame.Rect(center_x, 440, button_width, button_height), "action": "main"}
             ],
             "training": [
-                {"text": "Single Agent Training", "rect": pygame.Rect(250, 200, 300, 50), "action": "single_agent_training"},
-                {"text": "Multi Agent Training", "rect": pygame.Rect(250, 300, 300, 50), "action": "multi_agent_training"},
-                {"text": "Back", "rect": pygame.Rect(300, 400, 200, 50), "action": "main"}
+                # Adjusted width for longer text
+                {"text": "Single Agent Training", "rect": pygame.Rect(self.width // 2 - 300 // 2, 280, 300, button_height), "action": "single_agent_training"},
+                {"text": "Multi Agent Training", "rect": pygame.Rect(self.width // 2 - 300 // 2, 360, 300, button_height), "action": "multi_agent_training"},
+                {"text": "Back", "rect": pygame.Rect(center_x, 440, button_width, button_height), "action": "main"}
             ],
             "single_agent_type": [
-                {"text": "RL", "rect": pygame.Rect(300, 200, 200, 50), "action": "rl"},
-                {"text": "MPC", "rect": pygame.Rect(300, 270, 200, 50), "action": "mpc"},
-                {"text": "Random", "rect": pygame.Rect(300, 340, 200, 50), "action": "random"},
-                {"text": "Human", "rect": pygame.Rect(300, 410, 200, 50), "action": "human"},
-                {"text": "Back", "rect": pygame.Rect(300, 480, 200, 50), "action": "simulation"}
+                # Spaced out vertically more
+                {"text": "RL", "rect": pygame.Rect(center_x, 220, button_width, button_height), "action": "rl"},
+                {"text": "MPC", "rect": pygame.Rect(center_x, 290, button_width, button_height), "action": "mpc"},
+                {"text": "Random", "rect": pygame.Rect(center_x, 360, button_width, button_height), "action": "random"},
+                {"text": "Human", "rect": pygame.Rect(center_x, 430, button_width, button_height), "action": "human"},
+                {"text": "Back", "rect": pygame.Rect(center_x, 500, button_width, button_height), "action": "simulation"}
             ]
         }
         return buttons
     
     def _draw_button(self, button, hover=False):
-        """Draw a button on the screen."""
-        color = self.button_hover_color if hover else self.button_color
-        pygame.draw.rect(self.screen, color, button["rect"])
-        pygame.draw.rect(self.screen, self.text_color, button["rect"], 2)
+        """Draw a button with a semi-transparent background."""
+        color_rgba = self.button_hover_color if hover else self.button_color
+        border_color_rgba = self.button_border_color
         
+        # Create a temporary surface for the button with per-pixel alpha
+        button_surface = pygame.Surface(button["rect"].size, pygame.SRCALPHA)
+        
+        # Draw the semi-transparent background onto the temporary surface
+        pygame.draw.rect(button_surface, color_rgba, button_surface.get_rect())
+        
+        # Draw the border onto the temporary surface
+        pygame.draw.rect(button_surface, border_color_rgba, button_surface.get_rect(), 2)
+        
+        # Render the text
         text_surface = self.button_font.render(button["text"], True, self.button_text_color)
-        text_rect = text_surface.get_rect(center=button["rect"].center)
-        self.screen.blit(text_surface, text_rect)
+        text_rect = text_surface.get_rect(center=button_surface.get_rect().center)
+        
+        # Blit the text onto the temporary surface
+        button_surface.blit(text_surface, text_rect)
+        
+        # Blit the temporary button surface onto the main screen
+        self.screen.blit(button_surface, button["rect"].topleft)
     
     def _draw_title(self, title):
         """Draw the title of the current screen."""
         text_surface = self.title_font.render(title, True, self.text_color)
-        text_rect = text_surface.get_rect(center=(self.width // 2, 100))
+        # Add a simple shadow effect
+        shadow_surface = self.title_font.render(title, True, (30, 30, 30)) 
+        shadow_pos = (self.width // 2 + 2, 100 + 2)
+        text_pos = (self.width // 2, 100)
+        
+        shadow_rect = shadow_surface.get_rect(center=shadow_pos)
+        text_rect = text_surface.get_rect(center=text_pos)
+        
+        self.screen.blit(shadow_surface, shadow_rect)
         self.screen.blit(text_surface, text_rect)
     
     def _draw_section(self, title, y_pos):
