@@ -6,14 +6,16 @@ A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It 
 
 *   **Graphical User Interface:** Main menu for selecting modes (Simulation/Training) and agent configurations using Pygame.
 *   **Simulation Modes:** Supports both single-agent and multi-agent simulations.
-*   **Agent Types:** Includes Human (keyboard control), Random, basic Model Predictive Control (MPC using CasADi), and a placeholder for Reinforcement Learning (RL) agents.
+*   **Agent Types:** Includes Human (keyboard control), Random, basic Model Predictive Control (MPC using CasADi), and Reinforcement Learning (RL) agents with configurable algorithms.
 *   **Configurable Environment:** Simulation parameters, track layout, car physics, agent types, and more can be configured via YAML files.
 *   **Modular Structure:** Code is organized into modules for UI, environment, track, car, agents, etc.
 *   **Basic Physics:** Implements a kinematic bicycle model with considerations for engine/brake forces, drag, and rolling resistance.
+*   **Training Support:** Built-in training functionality for RL agents with configurable parameters and visualization options.
+*   **UI Controls:** Interactive controls during simulation and training (Back, Reset, Pause/Resume).
 
 ## Visuals
 
-![Simulation - Multi Agent Mode](/images/screenshot_simulation_multiagent.jpg)
+![Simulation - Multi Agent Mode](/images/screenshot_simulation_multiagent_v2.png)
 
 ## Installation
 
@@ -40,7 +42,8 @@ A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It 
     numpy
     pyyaml
     casadi
-    # Add any other specific RL libraries if/when implemented (e.g., stable-baselines3, torch)
+    torch
+    # Add any other specific RL libraries if/when implemented (e.g., stable-baselines3)
     ```
     Then install using pip:
     ```bash
@@ -57,6 +60,16 @@ python main.py
 
 This will launch the main menu, allowing you to select the desired simulation or training mode and configure agents.
 
+## UI Controls
+
+During both simulation and training, the following buttons are available in the UI:
+
+*   **Back Button:** Returns to the main menu. During training, this will save the current model before exiting.
+*   **Reset Button:** Resets the current episode, placing all agents back at their starting positions.
+*   **Pause/Resume Button:** Toggles between pausing and resuming the simulation/training. When paused, the environment state is frozen but the UI remains responsive.
+
+These controls allow for interactive monitoring and control of the simulation and training processes.
+
 ## Configuration
 
 The simulation behavior is primarily controlled through two YAML configuration files:
@@ -64,20 +77,183 @@ The simulation behavior is primarily controlled through two YAML configuration f
 *   `config.yaml`: Used for multi-agent simulations and training.
 *   `config_single_agent.yaml`: Used for single-agent simulations and training. It also contains the `agent_config` section detailing parameters for different agent types when run in single mode.
 
-Key configuration sections:
+### Configuration Details
 
-*   **`simulation`**: General parameters like timestep (`dt`), number of episodes, max steps per episode, simulation `mode` ('single' or 'multi'), number of agents (`num_agents` - relevant for multi), `render_mode` ('human', 'rgb_array', or `None`), and `render_fps`.
-*   **`training`**: Parameters specific to training runs (currently placeholders as RL training isn't fully implemented).
-*   **`track`**: Defines the track geometry (e.g., `type`, `length`, `radius`, `width`). Currently supports 'oval'.
-*   **`environment`**: Specifies which components of the car's state are included in the observation space (e.g., `x`, `y`, `v`, `theta`, `dist_to_centerline`).
-*   **`car`**: Defines the physical parameters of the cars (e.g., `wheelbase`, `mass`, `max_speed`, force coefficients, dimensions).
-*   **`agents`**: Defines the agents participating in the simulation.
-    *   In `config.yaml` (multi-agent): Each key (e.g., `agent_0`, `agent_1`) defines an agent's `type` and starting position index (`start_pos_idx`).
-    *   In `config_single_agent.yaml`: Contains only `agent_0` mainly for defining the `start_pos_idx`. The actual agent type is selected via the menu and parameters are merged from `agent_config`.
-*   **`agent_config`** (in `config_single_agent.yaml`): Contains specific parameters for each agent type ('human', 'random', 'mpc', 'rl') used when running in single-agent mode.
-*   **`rl`**: Hyperparameters for Reinforcement Learning (currently placeholders).
+#### Simulation Parameters
 
-Modify these files to customize the simulation environment, agent behaviors, and track layout.
+```yaml
+simulation:
+  dt: 0.1              # Simulation time step (seconds)
+  num_episodes: 3      # Number of episodes to run
+  max_steps: 1000      # Max steps per episode
+  mode: 'single'       # 'single' or 'multi'
+  num_agents: 1        # Number of agents (relevant for multi-agent mode)
+  render_mode: 'human' # 'human', 'rgb_array', or None
+  render_fps: 60       # Frames per second for rendering
+```
+
+*   **dt:** Controls the simulation time step. Smaller values provide more accurate physics but slower simulation.
+*   **num_episodes:** Number of episodes to run in simulation mode.
+*   **max_steps:** Maximum steps per episode before truncation.
+*   **mode:** 'single' for single-agent mode, 'multi' for multi-agent mode.
+*   **num_agents:** Number of agents in multi-agent mode.
+*   **render_mode:** 
+    *   'human': Display the simulation with UI controls
+    *   'rgb_array': Return frames as numpy arrays (for recording)
+    *   None: No rendering (fastest, for headless operation)
+*   **render_fps:** Controls the frame rate when rendering.
+
+#### Training Parameters
+
+```yaml
+training:
+  num_episodes: 500    # Number of training episodes
+  max_steps: 1000      # Max steps per episode
+  render_mode: 'human' # 'human', 'rgb_array', or None
+  render_fps: 60       # Frames per second for rendering
+  save_frequency: 100  # Save model every N episodes
+  learning_rate: 0.001 # Learning rate for the optimizer
+  discount_factor: 0.99 # Discount factor for the optimizer
+  rl_algo: 'reinforce' # 'reinforce', 'ppo', 'td3', etc.
+```
+
+*   **num_episodes:** Number of episodes to train for.
+*   **max_steps:** Maximum steps per episode before truncation.
+*   **render_mode:** 
+    *   'human': Display the training with UI controls (useful for monitoring)
+    *   'rgb_array': Return frames as numpy arrays (for recording)
+    *   None: No rendering (fastest, recommended for training)
+*   **render_fps:** Controls the frame rate when rendering.
+*   **save_frequency:** Save the model every N episodes.
+*   **learning_rate:** Learning rate for the optimizer.
+*   **discount_factor:** Discount factor for calculating returns.
+*   **rl_algo:** The RL algorithm to use ('reinforce' by default).
+
+> **Note:** For faster training, set `render_mode` to `None` in the training configuration. This will run the training without GUI visualization, which is significantly faster. Use `render_mode: 'human'` when you want to monitor the training progress visually.
+
+#### Track Parameters
+
+```yaml
+track:
+  type: 'oval'         # Track type
+  length: 100.0        # Length of straight sections
+  radius: 30.0         # Radius of curved sections
+  width: 15.0          # Total width of the track
+  start_line_x: 0.0    # X-coordinate of the start/end line center
+  start_lane: 'bottom' # 'top' or 'bottom'
+```
+
+*   **type:** Currently supports 'oval' track type.
+*   **length:** Length of the straight sections.
+*   **radius:** Radius of the curved sections.
+*   **width:** Total width of the track.
+*   **start_line_x:** X-coordinate of the start/finish line.
+*   **start_lane:** Which lane the start line is on ('top' or 'bottom').
+
+#### Environment Parameters
+
+```yaml
+environment:
+  observation_components: 
+    - 'x'
+    - 'y'
+    - 'v'
+    - 'theta'
+    - 'steer_angle'
+    - 'dist_to_centerline'
+```
+
+*   **observation_components:** List of state components to include in the observation space. Available options include:
+    *   'x': X-position
+    *   'y': Y-position
+    *   'v': Velocity
+    *   'theta': Heading angle
+    *   'steer_angle': Steering angle
+    *   'dist_to_centerline': Distance to track centerline
+
+#### Car Parameters
+
+```yaml
+car:
+  wheelbase: 2.5         # L (meters)
+  mass: 1500             # Mass (kg)
+  max_speed: 20.0        # m/s
+  min_accel: -5.0        # m/s^2 (braking)
+  max_accel: 3.0         # m/s^2
+  max_steer_angle: 0.6   # radians (~34 degrees)
+  width: 1.8             # For collision/visualization
+  length: 4.0            # For collision/visualization
+  collision_radius: 1.5  # Simplified collision check radius
+  
+  # Physics coefficients
+  coeff_drag: 0.8         # Air resistance coefficient
+  coeff_rolling_resistance: 60.0 # Rolling resistance coefficient
+  coeff_friction: 1.1      # Combined tire friction coefficient
+  coeff_cornering_stiffness: 15.0 # Tire lateral stiffness factor
+  max_engine_force: 4500   # Max forward force from engine (N)
+  max_brake_force: 6000    # Max backward force from brakes (N)
+  gravity: 9.81          # Acceleration due to gravity (m/s^2)
+```
+
+*   **wheelbase:** Distance between front and rear axles.
+*   **mass:** Vehicle mass in kg.
+*   **max_speed:** Maximum speed in m/s.
+*   **min_accel/max_accel:** Acceleration limits in m/s².
+*   **max_steer_angle:** Maximum steering angle in radians.
+*   **width/length:** Vehicle dimensions for collision detection and visualization.
+*   **collision_radius:** Simplified radius for collision detection.
+*   **Physics coefficients:** Various coefficients for the physics model.
+
+#### Agent Configuration
+
+For single-agent mode, agent configuration is in `config_single_agent.yaml`:
+
+```yaml
+agent_config:
+  human:
+    description: "Controlled by user via keyboard arrow keys."
+  random:
+    description: "Takes random actions within the action space."
+  mpc:
+    description: "Model Predictive Control agent."
+    horizon: 15       # Prediction horizon (N)
+  rl:
+    description: "Reinforcement Learning agent."
+    model_path: "models/single_agent/trained_model.zip" # Path to the saved RL model
+```
+
+For multi-agent mode, agent configuration is in `config.yaml`:
+
+```yaml
+agents:
+  agent_0:
+    type: 'rl'           # rl, mpc, human, random
+    model_path: 'models/agent0_policy.zip' # Path for RL model
+    start_pos_idx: 0     # Index for starting position
+  agent_1:
+    type: 'human'
+    start_pos_idx: 1
+  agent_2:
+    type: 'random'
+    start_pos_idx: 2
+```
+
+*   **type:** Agent type ('human', 'random', 'mpc', 'rl').
+*   **model_path:** Path to the saved model for RL agents.
+*   **start_pos_idx:** Index for the starting position on the track.
+*   **horizon:** Prediction horizon for MPC agents.
+
+#### RL Hyperparameters
+
+```yaml
+rl:
+  learning_rate: 0.0003
+  discount_factor: 0.99
+  # ... other hyperparameters
+```
+
+*   **learning_rate:** Learning rate for RL algorithms.
+*   **discount_factor:** Discount factor for calculating returns.
 
 ## Project Structure
 
@@ -89,10 +265,13 @@ Modify these files to customize the simulation environment, agent behaviors, and
 │   ├── human_agent.py  # Keyboard controlled agent
 │   ├── mpc_agent.py    # Model Predictive Control agent (using CasADi)
 │   ├── random_agent.py # Agent taking random actions
-│   └── rl_agent.py     # Placeholder for Reinforcement Learning agent
+│   └── rl_agent.py     # Reinforcement Learning agent
 ├── images/           # Contains images like the menu background
 │   └── main_menu_background.png
-├── models/           # Directory for saving/loading trained models (optional)
+├── models/           # Directory for saving/loading trained models
+├── rl_algo/          # Reinforcement Learning algorithms
+│   ├── __init__.py
+│   └── reinforce.py  # REINFORCE algorithm implementation
 ├── config.yaml       # Configuration for multi-agent mode
 ├── config_single_agent.yaml # Configuration for single-agent mode
 ├── car.py            # Car physics and state implementation
@@ -100,13 +279,12 @@ Modify these files to customize the simulation environment, agent behaviors, and
 ├── main.py           # Main entry point, runs the menu and starts simulation/training
 ├── menu.py           # Implements the Pygame main menu (MainMenu class)
 ├── README.md         # This file
-├── requirements.txt  # Python dependencies (You need to create this)
+├── requirements.txt  # Python dependencies
 ├── simulation.py     # Contains the simulation loop logic (run_simulation, run_episode)
 ├── track.py          # Track geometry and related functions (e.g., collision, lap check)
-├── training.py       # Placeholder functions for training RL agents
+├── training.py       # Functions for training RL agents
 ├── ui.py             # Pygame UI rendering for the simulation (UI class)
 └── utils.py          # Utility functions (e.g., collision checking)
-
 ```
 
 ## Agent Types
@@ -114,12 +292,14 @@ Modify these files to customize the simulation environment, agent behaviors, and
 *   **Human:** Controlled using the keyboard arrow keys (Up/Down for throttle/brake, Left/Right for steering).
 *   **Random:** Selects actions randomly from the allowed action space.
 *   **MPC (Model Predictive Control):** Uses CasADi to solve an optimization problem over a prediction horizon to determine the best action based on a kinematic bicycle model.
-*   **RL (Reinforcement Learning):** Placeholder agent. Requires implementation of model loading (e.g., PyTorch, TensorFlow) and inference logic within `agents/rl_agent.py`.
+*   **RL (Reinforcement Learning):** Implements a configurable RL agent that can load trained models and use different RL algorithms. Currently supports REINFORCE by default.
 
 ## Notes
 
-*   The Reinforcement Learning training and agent inference parts (`training.py`, parts of `agents/rl_agent.py`) are currently placeholders and need to be implemented using a specific RL library (like Stable Baselines3, Tianshou, or a custom implementation). The current `RLAgent` returns a default action.
+*   The Reinforcement Learning implementation now supports model loading and inference, with a configurable algorithm selection.
 *   The car physics model is a simplified kinematic bicycle model with added force dynamics. It may not perfectly reflect real-world vehicle behavior.
+*   The UI now includes interactive controls (Back, Reset, Pause/Resume) that work during both simulation and training.
+*   Multi-agent RL training is not yet implemented. The multi-agent training function is a placeholder for future development.
 
 ## Customization Guide
 
@@ -154,8 +334,6 @@ To add or remove observations from the environment:
    ```
 
 3. **Implement Observation Calculation:**
-   - If the new observation is simple car data (like 'steer_angle', 'accel'), make sure `car.get_data()` returns it.
-   - If it requires track info (like `dist_to_centerline`), make sure the calculation method exists in `track.py` (or `environment.py`) and that `environment._get_obs` calls it.
    - In `environment.py`, find the `_get_obs` method
    - Add logic to calculate your new observation:
    ```python
@@ -168,8 +346,6 @@ To add or remove observations from the environment:
                    # Add your calculation logic here
                    obs_dict[component] = np.array([value], dtype=np.float32)
    ```
-4. **Update Agents (Optional):**
-   - Modify only the agents that need to use the new/removed observation component. They can access it via `observation['component_name']`.
 
 ### Customizing Car Physics
 
@@ -228,6 +404,58 @@ To add or remove observations from the environment:
    lap_bonus = 100.0              # Bonus for completing a lap
    ```
    - Add new reward components based on your requirements
+
+### Using a Different RL Algorithm
+
+The project currently uses the REINFORCE algorithm by default, but you can implement and use different RL algorithms:
+
+1. **Create a New Algorithm:**
+   - Add a new file in the `rl_algo/` directory (e.g., `ppo.py`, `td3.py`, etc.)
+   - Implement the algorithm class with the following interface:
+   ```python
+   class MyRLAlgorithm(nn.Module):
+       def __init__(self, state_dim, action_dim, **kwargs):
+           super().__init__()
+           # Initialize your network architecture
+           
+       def forward(self, x):
+           # Implement the forward pass
+           # Should return (mean, std) for continuous action spaces
+           return mean, std
+           
+       def act(self, state):
+           # Convert state to tensor if needed
+           # Get action from the policy
+           # Return (action, log_prob)
+           return action, log_prob
+   ```
+
+2. **Update Configuration:**
+   - In `config_single_agent.yaml` or `config.yaml`, set the RL algorithm:
+   ```yaml
+   training:
+     rl_algo: 'my_algorithm'  # Name of your algorithm
+     learning_rate: 0.001
+     discount_factor: 0.99
+     # Add algorithm-specific parameters
+   ```
+
+3. **Register the Algorithm:**
+   - In `training.py`, update the `single_agent_training` function to handle your algorithm:
+   ```python
+   if rl_algo == 'reinforce':
+       obs_dim = sum(space.shape[0] for space in env.observation_space.spaces.values())
+       rl_agent.model = ReinforcePolicy(obs_dim, env.action_space.shape[0])
+   elif rl_algo == 'my_algorithm':
+       obs_dim = sum(space.shape[0] for space in env.observation_space.spaces.values())
+       rl_agent.model = MyRLAlgorithm(obs_dim, env.action_space.shape[0])
+   else:
+       raise ValueError(f"Unsupported RL algorithm: {rl_algo}")
+   ```
+
+4. **Update Model Loading:**
+   - Ensure your algorithm can load saved models by implementing the appropriate methods
+   - The `RLAgent` class in `agents/rl_agent.py` handles model loading and inference
 
 ### Adding New Agent Types
 

@@ -13,22 +13,42 @@ class UI:
         
         # Flag to indicate if we should return to the main menu
         self.return_to_menu = False
+        self.should_reset = False
         
-        # Sidebar Configuration
+        # Performance settings
+        self.use_simple_glow = True  # Use simpler glow effect for better performance
+        self.glow_radius = 2  # Reduced from 3 to 2 for better performance
+        self.glow_layers = 2  # Reduced number of glow layers
+        
+        # Sidebar Configuration - Cyberpunk style
         self.sidebar_width = 250  # Width of the sidebar in pixels
-        self.sidebar_color = (50, 50, 50)  # Dark grey background
-        self.sidebar_text_color = (220, 220, 220)  # Light grey text
+        self.sidebar_color = (15, 15, 20)  # Very dark background
+        self.sidebar_text_color = (0, 255, 255)  # Cyan neon text
         self.font_size = 18
         self.line_height = 22
         
-        # Bottom bar configuration
-        self.bottom_bar_height = 40  # Height of the bottom bar in pixels
-        self.bottom_bar_color = (40, 40, 40)  # Slightly darker than sidebar
-        self.back_button_width = 100
-        self.back_button_height = 30
-        self.back_button_color = (70, 70, 70)
-        self.back_button_hover_color = (100, 100, 100)
-        self.back_button_text_color = (220, 220, 220)
+        # Bottom bar configuration - Cyberpunk style
+        self.bottom_bar_height = 50  # Increased height for more buttons
+        self.bottom_bar_color = (10, 10, 15)  # Even darker than sidebar
+        self.button_width = 120
+        self.button_height = 35
+        self.button_color = (30, 30, 40)  # Darker button background
+        self.button_hover_color = (50, 50, 60)  # Slightly lighter on hover
+        self.button_text_color = (0, 255, 255)  # Cyan neon text
+        self.button_border_color = (0, 200, 200)  # Cyan border
+        
+        # Track colors for cyberpunk style
+        self.track_asphalt_color = (20, 20, 25)  # Very dark asphalt
+        self.track_line_color = (0, 255, 255)  # Cyan neon lines
+        self.track_curb_color = (255, 0, 128)  # Hot pink curbs
+        self.start_finish_color = (0, 255, 128)  # Neon green for start/finish line
+        
+        # Neon glow effect parameters
+        self.neon_glow_radius = self.glow_radius
+        self.neon_glow_color = (0, 255, 255, 128)  # Semi-transparent cyan
+        
+        # Pre-rendered surfaces for better performance
+        self.glow_surfaces = {}
         
         # Calculate simulation area dimensions
         track_cfg = config['track']
@@ -44,12 +64,30 @@ class UI:
         self.sidebar_rect = pygame.Rect(sim_area_width, 0, self.sidebar_width, sim_area_height)
         self.bottom_bar_rect = pygame.Rect(0, sim_area_height, self.screen_width, self.bottom_bar_height)
         
-        # Back button rectangle
+        # Button rectangles
+        button_spacing = 10
+        total_buttons_width = 3 * self.button_width + 2 * button_spacing
+        start_x = (self.screen_width - total_buttons_width) // 2
+        
         self.back_button_rect = pygame.Rect(
-            self.screen_width - self.back_button_width - 10,  # 10px padding from right
-            sim_area_height + (self.bottom_bar_height - self.back_button_height) // 2,  # Centered vertically
-            self.back_button_width,
-            self.back_button_height
+            start_x,
+            sim_area_height + (self.bottom_bar_height - self.button_height) // 2,
+            self.button_width,
+            self.button_height
+        )
+        
+        self.pause_button_rect = pygame.Rect(
+            start_x + self.button_width + button_spacing,
+            sim_area_height + (self.bottom_bar_height - self.button_height) // 2,
+            self.button_width,
+            self.button_height
+        )
+        
+        self.reset_button_rect = pygame.Rect(
+            start_x + 2 * (self.button_width + button_spacing),
+            sim_area_height + (self.bottom_bar_height - self.button_height) // 2,
+            self.button_width,
+            self.button_height
         )
         
         # Adjust world offset for the simulation area
@@ -60,6 +98,9 @@ class UI:
         self.clock = None
         self.font = None
         
+        # Pause state
+        self.paused = False
+        
         if self.render_mode == 'human':
             self._init_pygame()
     
@@ -68,7 +109,15 @@ class UI:
         pygame.init()
         pygame.font.init()  # Initialize font module
         pygame.display.set_caption("Racing Simulation")
-        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        
+        # Try to use hardware acceleration if available
+        try:
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.HWSURFACE | pygame.DOUBLEBUF)
+            print("Using hardware acceleration for rendering")
+        except:
+            self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+            print("Hardware acceleration not available, using software rendering")
+            
         self.clock = pygame.time.Clock()
         try:
             self.font = pygame.font.SysFont(None, self.font_size)  # Use system default font
@@ -104,14 +153,15 @@ class UI:
         if self.font is None:
             print("Warning: Font not available, cannot render text.")
         
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.close()
-                import sys
-                sys.exit()
+        # Handle UI events only in handle_events method
+        # for event in pygame.event.get():
+        #     if event.type == pygame.QUIT:
+        #         self.close()
+        #         import sys
+        #         sys.exit()
         
-        # Clear simulation area (lighter grey)
-        self.screen.fill((200, 200, 200), self.sim_area_rect)
+        # Clear simulation area (asphalt color)
+        self.screen.fill(self.track_asphalt_color, self.sim_area_rect)
         # Clear sidebar area (darker grey)
         self.screen.fill(self.sidebar_color, self.sidebar_rect)
         
@@ -120,7 +170,7 @@ class UI:
         # Draw the sidebar content
         self._draw_sidebar(cars, current_step, dt)
         
-        # Draw the bottom bar with back button
+        # Draw the bottom bar with buttons
         self._draw_bottom_bar()
         
         pygame.display.flip()
@@ -134,7 +184,7 @@ class UI:
         
         # Create a temporary surface matching the sim area size
         temp_surface = pygame.Surface((sim_area_width, sim_area_height))
-        temp_surface.fill((200, 200, 200))  # Background color
+        temp_surface.fill(self.track_asphalt_color)  # Background color
         
         # Need a world_to_screen function specifically for this surface
         def temp_world_to_screen(x, y):
@@ -149,9 +199,9 @@ class UI:
         # Get image data from the temporary surface
         return np.frombuffer(pygame.image.tostring(temp_surface, "RGB"), dtype=np.uint8).reshape(sim_area_height, sim_area_width, 3)
     
-    def _draw_track(self):
-        """Draws the track onto the main screen's sim area."""
-        screen = self.screen
+    def _draw_track(self, surface=None):
+        """Draws the track onto the specified surface or main screen's sim area with cyberpunk style."""
+        screen = surface if surface else self.screen
         world_to_screen = self.world_to_screen
         track = self.track # Access the track object stored in the UI
         
@@ -159,80 +209,118 @@ class UI:
         outer_r = track.radius + track.half_width
         inner_r = track.radius - track.half_width
         
+        # Draw curbs (outer) with neon glow effect
         # Straight sections (outer)
-        pygame.draw.line(screen, (0, 0, 0), 
-                        world_to_screen(-track.length/2, outer_r),
-                        world_to_screen(track.length/2, outer_r), 2)
-        pygame.draw.line(screen, (0, 0, 0),
-                        world_to_screen(-track.length/2, -outer_r),
-                        world_to_screen(track.length/2, -outer_r), 2)
+        self._draw_neon_line(screen, world_to_screen(-track.length/2, outer_r),
+                            world_to_screen(track.length/2, outer_r), self.track_curb_color, 4)
+        self._draw_neon_line(screen, world_to_screen(-track.length/2, -outer_r),
+                            world_to_screen(track.length/2, -outer_r), self.track_curb_color, 4)
         
         # Curved sections (outer)
         theta = np.linspace(-np.pi/2, np.pi/2, 100)
         points = [(track.curve1_center_x + outer_r * np.cos(t), 
                   track.curve1_center_y + outer_r * np.sin(t)) for t in theta]
         screen_points = [world_to_screen(x, y) for x, y in points]
-        pygame.draw.lines(screen, (0, 0, 0), False, screen_points, 2)
+        self._draw_neon_lines(screen, screen_points, self.track_curb_color, 4)
         
         theta = np.linspace(np.pi/2, 3*np.pi/2, 100)
         points = [(track.curve2_center_x + outer_r * np.cos(t),
                   track.curve2_center_y + outer_r * np.sin(t)) for t in theta]
         screen_points = [world_to_screen(x, y) for x, y in points]
-        pygame.draw.lines(screen, (0, 0, 0), False, screen_points, 2)
+        self._draw_neon_lines(screen, screen_points, self.track_curb_color, 4)
         
+        # Draw curbs (inner) with neon glow effect
         # Straight sections (inner)
-        pygame.draw.line(screen, (0, 0, 0),
-                        world_to_screen(-track.length/2, inner_r),
-                        world_to_screen(track.length/2, inner_r), 2)
-        pygame.draw.line(screen, (0, 0, 0),
-                        world_to_screen(-track.length/2, -inner_r),
-                        world_to_screen(track.length/2, -inner_r), 2)
+        self._draw_neon_line(screen, world_to_screen(-track.length/2, inner_r),
+                            world_to_screen(track.length/2, inner_r), self.track_curb_color, 4)
+        self._draw_neon_line(screen, world_to_screen(-track.length/2, -inner_r),
+                            world_to_screen(track.length/2, -inner_r), self.track_curb_color, 4)
         
         # Curved sections (inner)
         theta = np.linspace(-np.pi/2, np.pi/2, 100)
         points = [(track.curve1_center_x + inner_r * np.cos(t),
                   track.curve1_center_y + inner_r * np.sin(t)) for t in theta]
         screen_points = [world_to_screen(x, y) for x, y in points]
-        pygame.draw.lines(screen, (0, 0, 0), False, screen_points, 2)
+        self._draw_neon_lines(screen, screen_points, self.track_curb_color, 4)
         
         theta = np.linspace(np.pi/2, 3*np.pi/2, 100)
         points = [(track.curve2_center_x + inner_r * np.cos(t),
                   track.curve2_center_y + inner_r * np.sin(t)) for t in theta]
         screen_points = [world_to_screen(x, y) for x, y in points]
-        pygame.draw.lines(screen, (0, 0, 0), False, screen_points, 2)
+        self._draw_neon_lines(screen, screen_points, self.track_curb_color, 4)
         
-        # --- Draw Centerline (Optional, using a different color) --- 
+        # --- Draw Track Lines (Cyan Neon) --- 
         center_r = track.radius
-        centerline_color = (100, 100, 100) # Grey color for centerline
         # Straight centerlines
-        pygame.draw.line(screen, centerline_color,
-                        world_to_screen(-track.length/2, center_r),
-                        world_to_screen(track.length/2, center_r), 1)
-        pygame.draw.line(screen, centerline_color,
-                        world_to_screen(-track.length/2, -center_r),
-                        world_to_screen(track.length/2, -center_r), 1)
+        self._draw_neon_line(screen, world_to_screen(-track.length/2, center_r),
+                            world_to_screen(track.length/2, center_r), self.track_line_color, 2)
+        self._draw_neon_line(screen, world_to_screen(-track.length/2, -center_r),
+                            world_to_screen(track.length/2, -center_r), self.track_line_color, 2)
         
         # Curved centerlines
-        theta = np.linspace(-np.pi/2, np.pi/2, 50) # Fewer points for dashed appearance if needed
+        theta = np.linspace(-np.pi/2, np.pi/2, 50)
         points = [(track.curve1_center_x + center_r * np.cos(t),
                   track.curve1_center_y + center_r * np.sin(t)) for t in theta]
         screen_points = [world_to_screen(x, y) for x, y in points]
-        pygame.draw.lines(screen, centerline_color, False, screen_points, 1)
+        self._draw_neon_lines(screen, screen_points, self.track_line_color, 2)
         
         theta = np.linspace(np.pi/2, 3*np.pi/2, 50)
         points = [(track.curve2_center_x + center_r * np.cos(t),
                   track.curve2_center_y + center_r * np.sin(t)) for t in theta]
         screen_points = [world_to_screen(x, y) for x, y in points]
-        pygame.draw.lines(screen, centerline_color, False, screen_points, 1)
+        self._draw_neon_lines(screen, screen_points, self.track_line_color, 2)
         
-        # --- Draw Start/Finish Line --- 
-        start_finish_color = (0, 0, 255) # Blue color
+        # --- Draw Start/Finish Line (Neon Green) --- 
         yc_start_line = track.radius
         if track.start_lane == 'bottom':
             yc_start_line *= -1
-        pygame.draw.line(screen, start_finish_color,
-                        world_to_screen(track.start_line_x, yc_start_line - track.half_width),
-                        world_to_screen(track.start_line_x, yc_start_line + track.half_width), 3)
+        self._draw_neon_line(screen, world_to_screen(track.start_line_x, yc_start_line - track.half_width),
+                            world_to_screen(track.start_line_x, yc_start_line + track.half_width), 
+                            self.start_finish_color, 5)
+    
+    def _draw_neon_line(self, surface, start_pos, end_pos, color, width):
+        """Draw a line with a neon glow effect (optimized version)."""
+        if self.use_simple_glow:
+            # Simplified glow effect - just draw a few lines with decreasing width
+            for i in range(self.glow_layers, 0, -1):
+                glow_width = width + i
+                pygame.draw.line(surface, color, start_pos, end_pos, glow_width)
+            # Draw the main line
+            pygame.draw.line(surface, color, start_pos, end_pos, width)
+        else:
+            # Original glow effect with alpha blending (more expensive)
+            # Draw the glow effect (multiple lines with decreasing alpha)
+            for i in range(self.neon_glow_radius, 0, -1):
+                alpha = 128 // i
+                glow_color = (*color[:3], alpha)
+                glow_surface = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+                pygame.draw.line(glow_surface, glow_color, start_pos, end_pos, width + i*2)
+                surface.blit(glow_surface, (0, 0))
+            
+            # Draw the main line
+            pygame.draw.line(surface, color, start_pos, end_pos, width)
+    
+    def _draw_neon_lines(self, surface, points, color, width):
+        """Draw connected lines with a neon glow effect (optimized version)."""
+        if self.use_simple_glow:
+            # Simplified glow effect - just draw a few lines with decreasing width
+            for i in range(self.glow_layers, 0, -1):
+                glow_width = width + i
+                pygame.draw.lines(surface, color, False, points, glow_width)
+            # Draw the main lines
+            pygame.draw.lines(surface, color, False, points, width)
+        else:
+            # Original glow effect with alpha blending (more expensive)
+            # Draw the glow effect (multiple lines with decreasing alpha)
+            for i in range(self.neon_glow_radius, 0, -1):
+                alpha = 128 // i
+                glow_color = (*color[:3], alpha)
+                glow_surface = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+                pygame.draw.lines(glow_surface, glow_color, False, points, width + i*2)
+                surface.blit(glow_surface, (0, 0))
+            
+            # Draw the main lines
+            pygame.draw.lines(surface, color, False, points, width)
     
     def _draw_track_and_cars(self, cars):
         """Draw the track and all cars onto the main screen's sim area."""
@@ -240,7 +328,7 @@ class UI:
         self._draw_cars(self.screen, self.world_to_screen, cars, draw_info_text=False)
     
     def _draw_cars(self, surface, world_to_screen, cars, draw_info_text=False):
-        """Draw all cars onto the specified surface."""
+        """Draw all cars onto the specified surface with cyberpunk style (optimized)."""
         for agent_id, car in cars.items():
             # Calculate car center screen coordinates once
             center_sx, center_sy = world_to_screen(car.x, car.y)
@@ -249,7 +337,7 @@ class UI:
             if not self.sim_area_rect.collidepoint(center_sx, center_sy):
                 continue  # Skip drawing if center is outside sim area
             
-            # --- Draw Car Body (Rectangle) --- 
+            # --- Draw Car Body (Rectangle) with neon glow --- 
             car_length = car.params['length']
             car_width = car.params['width']
             # Define coordinates of the rectangle corners relative to the car center (0,0) before rotation
@@ -272,28 +360,75 @@ class UI:
             # Convert world coordinates to screen coordinates
             screen_points = [world_to_screen(wx, wy) for wx, wy in rotated_world_points]
             
-            # Draw the car polygon
-            pygame.draw.polygon(surface, pygame.Color(car.color), screen_points)
-            pygame.draw.polygon(surface, (0,0,0), screen_points, 1) # Black outline
+            # Draw the car with simplified glow effect
+            if self.use_simple_glow:
+                # Draw the glow effect with multiple polygons of increasing size
+                for i in range(self.glow_layers, 0, -1):
+                    # Create slightly larger polygon for glow
+                    glow_points = []
+                    for x, y in screen_points:
+                        # Expand each point outward from the center
+                        dx = x - center_sx
+                        dy = y - center_sy
+                        # Normalize and scale
+                        length = (dx*dx + dy*dy)**0.5
+                        if length > 0:
+                            dx = dx / length * i
+                            dy = dy / length * i
+                        glow_points.append((x + dx, y + dy))
+                    
+                    # Draw the glow polygon
+                    pygame.draw.polygon(surface, pygame.Color(car.color), glow_points)
+                
+                # Draw the main car polygon
+                pygame.draw.polygon(surface, pygame.Color(car.color), screen_points)
+                pygame.draw.polygon(surface, (0, 0, 0), screen_points, 1)  # Black outline
+            else:
+                # Original glow effect with alpha blending (more expensive)
+                # Create a temporary surface for the glow effect
+                glow_surface = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+                
+                # Draw the glow effect
+                for i in range(self.neon_glow_radius, 0, -1):
+                    alpha = 128 // i
+                    glow_color = (*pygame.Color(car.color)[:3], alpha)
+                    pygame.draw.polygon(glow_surface, glow_color, screen_points)
+                
+                # Blit the glow surface onto the main surface
+                surface.blit(glow_surface, (0, 0))
+                
+                # Draw the main car polygon
+                pygame.draw.polygon(surface, pygame.Color(car.color), screen_points)
+                pygame.draw.polygon(surface, (0, 0, 0), screen_points, 1)  # Black outline
             
-            # --- Draw Heading Line --- 
+            # Add a neon highlight to make the car look more cyberpunk
+            highlight_points = screen_points[:2]  # Just the front edge
+            self._draw_neon_line(surface, highlight_points[0], highlight_points[1], (255, 255, 255), 2)
+            
+            # --- Draw Heading Line with neon effect --- 
             # Calculate end point of the heading line in world coordinates
             hx = car.x + car_length/2 * cos_theta 
             hy = car.y + car_length/2 * sin_theta
             # Convert end point to screen coordinates
             shx, shy = world_to_screen(hx, hy)
-            # Draw the line from center to front
-            pygame.draw.line(surface, (0, 0, 0), (center_sx, center_sy), (shx, shy), 2) # Black heading line
+            # Draw the line from center to front with neon effect
+            self._draw_neon_line(surface, (center_sx, center_sy), (shx, shy), (0, 0, 0), 2)
+            
+            # Draw car ID above the car with cyberpunk style
+            if draw_info_text and self.font:
+                id_text = self.font.render(f"Car {agent_id}", True, self.sidebar_text_color)
+                id_rect = id_text.get_rect(center=(center_sx, center_sy - 20))
+                surface.blit(id_text, id_rect)
     
     def _draw_sidebar(self, cars, current_step, dt):
-        """Draws the information sidebar onto the main screen."""
+        """Draws the information sidebar with cyberpunk style (optimized)."""
         if not self.font:
             return
         
         start_x = self.sim_area_rect.width + 10  # Start 10px into the sidebar
         current_y = 10
         
-        # --- Simulation Info ---
+        # --- Simulation Info with cyberpunk style ---
         sim_time = current_step * dt
         time_text = self.font.render(f"Time: {sim_time:.2f} s", True, self.sidebar_text_color)
         self.screen.blit(time_text, (start_x, current_y))
@@ -303,7 +438,7 @@ class UI:
         self.screen.blit(steps_text, (start_x, current_y))
         current_y += self.line_height * 1.5  # Add extra space
         
-        # --- Agent Info ---
+        # --- Agent Info with cyberpunk style ---
         title_text = self.font.render("Agent Information:", True, self.sidebar_text_color)
         self.screen.blit(title_text, (start_x, current_y))
         current_y += self.line_height * 1.2
@@ -316,43 +451,98 @@ class UI:
             if not car:
                 continue
             
-            # Agent ID and Color Indicator
+            # Agent ID and Color Indicator with cyberpunk style
             id_text = self.font.render(f"{agent_id}:", True, self.sidebar_text_color)
             id_rect = id_text.get_rect(topleft=(start_x + 25, current_y))
+            
+            # Draw a simplified glowing circle for the agent color
+            if self.use_simple_glow:
+                # Draw multiple circles with decreasing size for a simple glow effect
+                for i in range(self.glow_layers, 0, -1):
+                    pygame.draw.circle(self.screen, pygame.Color(car.color), 
+                                     (start_x + 10, current_y + self.font.get_height() // 2), 
+                                     7 + i)
+            else:
+                # Original glow effect with alpha blending (more expensive)
+                glow_surface = pygame.Surface((20, 20), pygame.SRCALPHA)
+                for i in range(self.neon_glow_radius, 0, -1):
+                    alpha = 128 // i
+                    glow_color = (*pygame.Color(car.color)[:3], alpha)
+                    pygame.draw.circle(glow_surface, glow_color, (10, 10), 7 + i)
+                self.screen.blit(glow_surface, (start_x + 3, current_y + self.font.get_height() // 2 - 10))
+            
+            # Draw the main circle
             pygame.draw.circle(self.screen, pygame.Color(car.color), (start_x + 10, current_y + self.font.get_height() // 2), 7)
             self.screen.blit(id_text, id_rect)
             current_y += self.line_height
             
-            # Position
+            # Position with cyberpunk style
             pos_text = self.font.render(f"  Pos: ({car.x:.1f}, {car.y:.1f})", True, self.sidebar_text_color)
             self.screen.blit(pos_text, (start_x, current_y))
             current_y += self.line_height
             
-            # Speed
+            # Speed with cyberpunk style
             speed_text = self.font.render(f"  Speed: {car.v:.2f} m/s", True, self.sidebar_text_color)
             self.screen.blit(speed_text, (start_x, current_y))
             current_y += self.line_height
             
-            # Lap Count
+            # Lap Count with cyberpunk style
             lap_text = self.font.render(f"  Lap: {car.lap_count}", True, self.sidebar_text_color)
             self.screen.blit(lap_text, (start_x, current_y))
             current_y += self.line_height * 1.2  # Extra space between agents
     
     def _draw_bottom_bar(self):
-        """Draw the bottom bar with the back button."""
+        """Draw the bottom bar with buttons in cyberpunk style."""
         # Draw the bottom bar background
         pygame.draw.rect(self.screen, self.bottom_bar_color, self.bottom_bar_rect)
         
-        # Draw the back button
+        # Draw the buttons with cyberpunk style
         mouse_pos = pygame.mouse.get_pos()
-        button_color = self.back_button_hover_color if self.back_button_rect.collidepoint(mouse_pos) else self.back_button_color
-        pygame.draw.rect(self.screen, button_color, self.back_button_rect)
-        pygame.draw.rect(self.screen, self.back_button_text_color, self.back_button_rect, 1)  # Border
         
-        # Draw the back button text
-        back_text = self.font.render("Back", True, self.back_button_text_color)
-        text_rect = back_text.get_rect(center=self.back_button_rect.center)
-        self.screen.blit(back_text, text_rect)
+        # Back button with neon effect
+        button_color = self.button_hover_color if self.back_button_rect.collidepoint(mouse_pos) else self.button_color
+        self._draw_neon_button(self.back_button_rect, button_color, "Back")
+        
+        # Pause/Resume button with neon effect
+        button_color = self.button_hover_color if self.pause_button_rect.collidepoint(mouse_pos) else self.button_color
+        self._draw_neon_button(self.pause_button_rect, button_color, "Pause" if not self.paused else "Resume")
+        
+        # Reset button with neon effect
+        button_color = self.button_hover_color if self.reset_button_rect.collidepoint(mouse_pos) else self.button_color
+        self._draw_neon_button(self.reset_button_rect, button_color, "Reset")
+    
+    def _draw_neon_button(self, rect, color, text):
+        """Draw a button with a neon glow effect (optimized)."""
+        if self.use_simple_glow:
+            # Simplified glow effect - just draw multiple rectangles with decreasing size
+            for i in range(self.glow_layers, 0, -1):
+                glow_rect = pygame.Rect(
+                    rect.x - i, rect.y - i,
+                    rect.width + i*2, rect.height + i*2
+                )
+                pygame.draw.rect(self.screen, color, glow_rect, 0, 5)
+            
+            # Draw the main button
+            pygame.draw.rect(self.screen, color, rect, 0, 5)
+            pygame.draw.rect(self.screen, self.button_border_color, rect, 1, 5)  # Border
+        else:
+            # Original glow effect with alpha blending (more expensive)
+            # Draw the glow effect
+            glow_surface = pygame.Surface((rect.width + self.neon_glow_radius*2, rect.height + self.neon_glow_radius*2), pygame.SRCALPHA)
+            for i in range(self.neon_glow_radius, 0, -1):
+                alpha = 128 // i
+                glow_color = (*color[:3], alpha)
+                pygame.draw.rect(glow_surface, glow_color, (i, i, rect.width + (self.neon_glow_radius-i)*2, rect.height + (self.neon_glow_radius-i)*2), 0, 5)
+            self.screen.blit(glow_surface, (rect.x - self.neon_glow_radius, rect.y - self.neon_glow_radius))
+            
+            # Draw the main button
+            pygame.draw.rect(self.screen, color, rect, 0, 5)
+            pygame.draw.rect(self.screen, self.button_border_color, rect, 1, 5)  # Border
+        
+        # Draw the text
+        button_text = self.font.render(text, True, self.button_text_color)
+        text_rect = button_text.get_rect(center=rect.center)
+        self.screen.blit(button_text, text_rect)
     
     def handle_events(self):
         """Handle pygame events and return whether to continue running."""
@@ -366,11 +556,30 @@ class UI:
                         print("Back button clicked. Returning to main menu.")
                         self.return_to_menu = True
                         return False
+                    elif self.pause_button_rect.collidepoint(event.pos):
+                        print("Pause/Resume button clicked.")
+                        self.paused = not self.paused
+                        return True
+                    elif self.reset_button_rect.collidepoint(event.pos):
+                        print("Reset button clicked.")
+                        self.should_reset = True
+                        return True
         return True
     
     def should_return_to_menu(self):
         """Check if the UI is requesting to return to the main menu."""
         return self.return_to_menu
+    
+    def should_reset(self):
+        """Check if the UI is requesting to reset the environment."""
+        if self.should_reset:
+            self.should_reset = False
+            return True
+        return False
+    
+    def is_paused(self):
+        """Check if the simulation is paused."""
+        return self.paused
     
     def close(self):
         """Close the environment and cleanup pygame."""
@@ -380,4 +589,4 @@ class UI:
             pygame.quit()
             self.screen = None
             self.font = None
-            self.clock = None 
+            self.clock = None

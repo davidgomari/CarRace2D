@@ -25,6 +25,7 @@ class RacingEnv(gym.Env):
         self._setup_track()
         self._setup_spaces()
         self._setup_agents_and_cars()
+        self.quit_requested = False # Flag to signal user quit
         
         # Initialize UI if needed
         self.ui = None
@@ -182,8 +183,8 @@ class RacingEnv(gym.Env):
                 car_cfg.get('max_engine_force', 4500) / car_cfg.get('mass', 1500), 
                 shape=(1,), dtype=np.float32
             ),
-             'accel_lat': spaces.Box(-10, 10, shape=(1,), dtype=np.float32), # Approx lateral accel limits
-            'dist_to_centerline': spaces.Box(0, self.track.width, shape=(1,), dtype=np.float32),
+            'accel_lat': spaces.Box(-10, 10, shape=(1,), dtype=np.float32), # Approx lateral accel limits
+            'dist_to_centerline': spaces.Box(0, np.inf, shape=(1,), dtype=np.float32),
             # Add definitions for other potential future obs
         }
 
@@ -282,6 +283,7 @@ class RacingEnv(gym.Env):
         super().reset(seed=seed)
         self.current_step = 0
         self._reset_cars()
+        self.quit_requested = False # Reset quit flag
         observations = self._get_obs()
         infos = self._get_info()
 
@@ -319,11 +321,25 @@ class RacingEnv(gym.Env):
 
         if self.render_mode == "human":
             self.render()
+            
+            # Check if user requested quit during render
+            if self.quit_requested:
+                print("User requested quit. Ending episode.")
+                for agent_id in self.agents.keys():
+                    truncations[agent_id] = True # Ensure episode ends
+                    infos[agent_id]['quit_signal'] = True # Signal quit
 
         if self.mode == 'single':
+            # Ensure 'quit_signal' is in info even if not quitting
+            agent_info = infos.get('agent_0', {})
+            agent_info.setdefault('quit_signal', False) 
             return (observations['agent_0'], rewards['agent_0'], 
                    terminations['agent_0'], truncations['agent_0'], 
-                   infos.get('agent_0', {}))
+                   agent_info)
+        
+        # Ensure 'quit_signal' is in info for multi-agent mode
+        for agent_id in self.agents.keys():
+            infos[agent_id].setdefault('quit_signal', False)
         return observations, rewards, terminations, truncations, infos
 
     def _initialize_step(self):
@@ -399,9 +415,19 @@ class RacingEnv(gym.Env):
                 truncations[agent_id] = True
 
     def render(self):
-        """Render the environment."""
+        """Render the environment and handle Pygame events."""
         if self.ui is not None:
-            self.ui.render(self.cars, self.current_step, self.dt)
+            # Process Pygame events to keep window responsive and detect quit
+            if self.render_mode == 'human':
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.quit_requested = True
+                        return # Stop rendering if quit is requested
+                # pygame.event.pump() # Alternative: just pump events without checking QUIT here
+            
+            # If still running (no quit), render the UI
+            if not self.quit_requested:
+                self.ui.render(self.cars, self.current_step, self.dt)
 
     def close(self):
         """Close the environment and cleanup."""

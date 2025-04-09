@@ -155,6 +155,35 @@ def print_final_analysis(metrics, agents):
         else:
             print(f"Agent {agent_id}: No laps completed across all episodes.")
 
+def handle_pygame_events(env, observations, metrics, current_step):
+    """Handle pygame events and return updated state variables."""
+    running = env.ui.handle_events()
+    
+    # Check if we should return to the main menu
+    if not running and env.ui.should_return_to_menu():
+        return -1, observations, metrics, current_step  # Special value to indicate return to menu
+    
+    # Check if we should reset the environment
+    if env.ui.should_reset:  # Access as a property, not a method
+        observations, infos = env.reset()
+        # Reset metrics for this episode
+        for agent_id in metrics['episode_reward_sum'].keys():
+            metrics['episode_reward_sum'][agent_id] = 0
+            metrics['lap_start_times'][agent_id] = 0.0
+            metrics['current_lap_times'][agent_id] = []
+        current_step = 0
+        # Reset the flag after handling it
+        env.ui.should_reset = False
+        return running, observations, metrics, current_step
+    
+    # Check if we're paused
+    if env.ui.is_paused():
+        # Just render the current state without progressing
+        env.render()
+        return -2, observations, metrics, current_step
+    
+    return running, observations, metrics, current_step
+
 def run_episode(env, mode, agents, metrics, config):
     """Run a single episode of the simulation."""
     # Reset environment
@@ -176,10 +205,13 @@ def run_episode(env, mode, agents, metrics, config):
     while running:
         # Handle Pygame Events
         if env.render_mode == 'human':
-            running = env.ui.handle_events()
-            # Check if we should return to the main menu
-            if not running and env.ui.should_return_to_menu():
-                return -1  # Special value to indicate return to menu
+            running, observations, metrics, current_step = handle_pygame_events(
+                env, observations, metrics, current_step)
+            if running == -1:  # Special value to indicate return to menu
+                return -1
+            elif running == -2: # Special value to indicate pause
+                continue
+        
         if not running: break
 
         # Get Actions and Step Environment

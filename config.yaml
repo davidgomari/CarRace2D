@@ -1,7 +1,7 @@
 # Simulation Parameters
 simulation:
   dt: 0.1              # Simulation time step (seconds)
-  num_episodes: 1      # Number of episodes to run
+  num_episodes: 2      # Number of episodes to run
   max_steps: 1000      # Max steps per episode
   mode: 'multi'        # 'single' or 'multi'
   num_agents: 3

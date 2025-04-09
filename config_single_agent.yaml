@@ -1,19 +1,24 @@
 # Simulation Parameters
 simulation:
-  dt: 0.1              # Simulation time step (seconds)
   num_episodes: 3      # Number of episodes to run
   max_steps: 1000      # Max steps per episode
-  mode: 'single'
-  num_agents: 1 
   render_mode: 'human' # 'human', 'rgb_array', or None
   render_fps: 60
+  dt: 0.1              # Simulation time step (seconds)
+  mode: 'single'
+  num_agents: 1 
+
   
 # Training Parameters
 training:
-  num_episodes: 1000   # Number of training episodes
-  save_frequency: 100  # Save model every N episodes
-  render_mode: None    # Usually None during training for speed
-  render_fps: 30
+  num_episodes: 500     # Number of training episodes
+  max_steps: 1000       # Max steps per episode
+  render_mode: 'human' # 'human', 'rgb_array', or None (Usually None during training)
+  render_fps: 60        # Frames per second for rendering (if render_mode is 'human')
+  save_frequency: 100   # Save model every N episodes
+  learning_rate: 0.001 # Learning rate for the optimizer
+  discount_factor: 0.99 # Discount factor for the optimizer
+  rl_algo: 'reinforce'   # 'ppo', 'td3', 'sac', 'reinforce'
 
 # Track Parameters (Example for Oval)
 track:
@@ -33,6 +38,8 @@ environment:
     - 'y'
     - 'v'
     - 'theta'
+    - 'steer_angle'
+    - 'dist_to_centerline'
 
 # Car Parameters
 car:
@@ -71,7 +78,7 @@ agent_config:
     # Add other MPC specific parameters if needed
   rl:
     description: "Reinforcement Learning agent."
-    model_path: "models/placeholder_model.pt" # Path to the saved RL model
+    model_path: "models/single_agent/trained_model.zip" # Path to the saved RL model
     # Add other RL specific parameters if needed (e.g., network architecture details)
 
 # Default Agent Setup (can be used for start position, etc.)
