@@ -70,191 +70,6 @@ During both simulation and training, the following buttons are available in the 
 
 These controls allow for interactive monitoring and control of the simulation and training processes.
 
-## Configuration
-
-The simulation behavior is primarily controlled through two YAML configuration files:
-
-*   `config.yaml`: Used for multi-agent simulations and training.
-*   `config_single_agent.yaml`: Used for single-agent simulations and training. It also contains the `agent_config` section detailing parameters for different agent types when run in single mode.
-
-### Configuration Details
-
-#### Simulation Parameters
-
-```yaml
-simulation:
-  dt: 0.1              # Simulation time step (seconds)
-  num_episodes: 3      # Number of episodes to run
-  max_steps: 1000      # Max steps per episode
-  mode: 'single'       # 'single' or 'multi'
-  num_agents: 1        # Number of agents (relevant for multi-agent mode)
-  render_mode: 'human' # 'human', 'rgb_array', or None
-  render_fps: 60       # Frames per second for rendering
-```
-
-*   **dt:** Controls the simulation time step. Smaller values provide more accurate physics but slower simulation.
-*   **num_episodes:** Number of episodes to run in simulation mode.
-*   **max_steps:** Maximum steps per episode before truncation.
-*   **mode:** 'single' for single-agent mode, 'multi' for multi-agent mode.
-*   **num_agents:** Number of agents in multi-agent mode.
-*   **render_mode:** 
-    *   'human': Display the simulation with UI controls
-    *   'rgb_array': Return frames as numpy arrays (for recording)
-    *   None: No rendering (fastest, for headless operation)
-*   **render_fps:** Controls the frame rate when rendering.
-
-#### Training Parameters
-
-```yaml
-training:
-  num_episodes: 500    # Number of training episodes
-  max_steps: 1000      # Max steps per episode
-  render_mode: 'human' # 'human', 'rgb_array', or None
-  render_fps: 60       # Frames per second for rendering
-  save_frequency: 100  # Save model every N episodes
-  learning_rate: 0.001 # Learning rate for the optimizer
-  discount_factor: 0.99 # Discount factor for the optimizer
-  rl_algo: 'reinforce' # 'reinforce', 'ppo', 'td3', etc.
-```
-
-*   **num_episodes:** Number of episodes to train for.
-*   **max_steps:** Maximum steps per episode before truncation.
-*   **render_mode:** 
-    *   'human': Display the training with UI controls (useful for monitoring)
-    *   'rgb_array': Return frames as numpy arrays (for recording)
-    *   None: No rendering (fastest, recommended for training)
-*   **render_fps:** Controls the frame rate when rendering.
-*   **save_frequency:** Save the model every N episodes.
-*   **learning_rate:** Learning rate for the optimizer.
-*   **discount_factor:** Discount factor for calculating returns.
-*   **rl_algo:** The RL algorithm to use ('reinforce' by default).
-
-> **Note:** For faster training, set `render_mode` to `None` in the training configuration. This will run the training without GUI visualization, which is significantly faster. Use `render_mode: 'human'` when you want to monitor the training progress visually.
-
-#### Track Parameters
-
-```yaml
-track:
-  type: 'oval'         # Track type
-  length: 100.0        # Length of straight sections
-  radius: 30.0         # Radius of curved sections
-  width: 15.0          # Total width of the track
-  start_line_x: 0.0    # X-coordinate of the start/end line center
-  start_lane: 'bottom' # 'top' or 'bottom'
-```
-
-*   **type:** Currently supports 'oval' track type.
-*   **length:** Length of the straight sections.
-*   **radius:** Radius of the curved sections.
-*   **width:** Total width of the track.
-*   **start_line_x:** X-coordinate of the start/finish line.
-*   **start_lane:** Which lane the start line is on ('top' or 'bottom').
-
-#### Environment Parameters
-
-```yaml
-environment:
-  observation_components: 
-    - 'x'
-    - 'y'
-    - 'v'
-    - 'theta'
-    - 'steer_angle'
-    - 'dist_to_centerline'
-```
-
-*   **observation_components:** List of state components to include in the observation space. Available options include:
-    *   'x': X-position
-    *   'y': Y-position
-    *   'v': Velocity
-    *   'theta': Heading angle
-    *   'steer_angle': Steering angle
-    *   'dist_to_centerline': Distance to track centerline
-
-#### Car Parameters
-
-```yaml
-car:
-  wheelbase: 2.5         # L (meters)
-  mass: 1500             # Mass (kg)
-  max_speed: 20.0        # m/s
-  min_accel: -5.0        # m/s^2 (braking)
-  max_accel: 3.0         # m/s^2
-  max_steer_angle: 0.6   # radians (~34 degrees)
-  width: 1.8             # For collision/visualization
-  length: 4.0            # For collision/visualization
-  collision_radius: 1.5  # Simplified collision check radius
-  
-  # Physics coefficients
-  coeff_drag: 0.8         # Air resistance coefficient
-  coeff_rolling_resistance: 60.0 # Rolling resistance coefficient
-  coeff_friction: 1.1      # Combined tire friction coefficient
-  coeff_cornering_stiffness: 15.0 # Tire lateral stiffness factor
-  max_engine_force: 4500   # Max forward force from engine (N)
-  max_brake_force: 6000    # Max backward force from brakes (N)
-  gravity: 9.81          # Acceleration due to gravity (m/s^2)
-```
-
-*   **wheelbase:** Distance between front and rear axles.
-*   **mass:** Vehicle mass in kg.
-*   **max_speed:** Maximum speed in m/s.
-*   **min_accel/max_accel:** Acceleration limits in m/s².
-*   **max_steer_angle:** Maximum steering angle in radians.
-*   **width/length:** Vehicle dimensions for collision detection and visualization.
-*   **collision_radius:** Simplified radius for collision detection.
-*   **Physics coefficients:** Various coefficients for the physics model.
-
-#### Agent Configuration
-
-For single-agent mode, agent configuration is in `config_single_agent.yaml`:
-
-```yaml
-agent_config:
-  human:
-    description: "Controlled by user via keyboard arrow keys."
-  random:
-    description: "Takes random actions within the action space."
-  mpc:
-    description: "Model Predictive Control agent."
-    horizon: 15       # Prediction horizon (N)
-  rl:
-    description: "Reinforcement Learning agent."
-    model_path: "models/single_agent/trained_model.zip" # Path to the saved RL model
-```
-
-For multi-agent mode, agent configuration is in `config.yaml`:
-
-```yaml
-agents:
-  agent_0:
-    type: 'rl'           # rl, mpc, human, random
-    model_path: 'models/agent0_policy.zip' # Path for RL model
-    start_pos_idx: 0     # Index for starting position
-  agent_1:
-    type: 'human'
-    start_pos_idx: 1
-  agent_2:
-    type: 'random'
-    start_pos_idx: 2
-```
-
-*   **type:** Agent type ('human', 'random', 'mpc', 'rl').
-*   **model_path:** Path to the saved model for RL agents.
-*   **start_pos_idx:** Index for the starting position on the track.
-*   **horizon:** Prediction horizon for MPC agents.
-
-#### RL Hyperparameters
-
-```yaml
-rl:
-  learning_rate: 0.0003
-  discount_factor: 0.99
-  # ... other hyperparameters
-```
-
-*   **learning_rate:** Learning rate for RL algorithms.
-*   **discount_factor:** Discount factor for calculating returns.
-
 ## Project Structure
 
 ```
@@ -286,6 +101,7 @@ rl:
 ├── ui.py             # Pygame UI rendering for the simulation (UI class)
 └── utils.py          # Utility functions (e.g., collision checking)
 ```
+
 
 ## Agent Types
 
@@ -500,3 +316,190 @@ The project currently uses the REINFORCE algorithm by default, but you can imple
    - Consider implementing sub-stepping for more accurate physics at lower update rates
 
 Remember to test thoroughly after making any modifications, as changes to one component may affect other parts of the simulation.
+
+
+## Configuration
+
+The simulation behavior is primarily controlled through two YAML configuration files:
+
+*   `config.yaml`: Used for multi-agent simulations and training.
+*   `config_single_agent.yaml`: Used for single-agent simulations and training. It also contains the `agent_config` section detailing parameters for different agent types when run in single mode.
+
+### Configuration Details
+
+#### Simulation Parameters
+
+```yaml
+simulation:
+  dt: 0.1              # Simulation time step (seconds)
+  num_episodes: 3      # Number of episodes to run
+  max_steps: 1000      # Max steps per episode
+  mode: 'single'       # 'single' or 'multi'
+  num_agents: 1        # Number of agents (relevant for multi-agent mode)
+  render_mode: 'human' # 'human', 'rgb_array', or None
+  render_fps: 60       # Frames per second for rendering
+```
+
+*   **dt:** Controls the simulation time step. Smaller values provide more accurate physics but slower simulation.
+*   **num_episodes:** Number of episodes to run in simulation mode.
+*   **max_steps:** Maximum steps per episode before truncation.
+*   **mode:** 'single' for single-agent mode, 'multi' for multi-agent mode.
+*   **num_agents:** Number of agents in multi-agent mode.
+*   **render_mode:** 
+    *   'human': Display the simulation with UI controls
+    *   'rgb_array': Return frames as numpy arrays (for recording)
+    *   None: No rendering (fastest, for headless operation)
+*   **render_fps:** Controls the frame rate when rendering.
+
+#### Training Parameters
+
+```yaml
+training:
+  num_episodes: 500    # Number of training episodes
+  max_steps: 1000      # Max steps per episode
+  render_mode: 'human' # 'human', 'rgb_array', or None
+  render_fps: 60       # Frames per second for rendering
+  save_frequency: 100  # Save model every N episodes
+  learning_rate: 0.001 # Learning rate for the optimizer
+  discount_factor: 0.99 # Discount factor for the optimizer
+  rl_algo: 'reinforce' # 'reinforce', 'ppo', 'td3', etc.
+```
+
+*   **num_episodes:** Number of episodes to train for.
+*   **max_steps:** Maximum steps per episode before truncation.
+*   **render_mode:** 
+    *   'human': Display the training with UI controls (useful for monitoring)
+    *   'rgb_array': Return frames as numpy arrays (for recording)
+    *   None: No rendering (fastest, recommended for training)
+*   **render_fps:** Controls the frame rate when rendering.
+*   **save_frequency:** Save the model every N episodes.
+*   **learning_rate:** Learning rate for the optimizer.
+*   **discount_factor:** Discount factor for calculating returns.
+*   **rl_algo:** The RL algorithm to use ('reinforce' by default).
+
+> **Note:** For faster training, set `render_mode` to `None` in the training configuration. This will run the training without GUI visualization, which is significantly faster. Use `render_mode: 'human'` when you want to monitor the training progress visually.
+
+#### Track Parameters
+
+```yaml
+track:
+  type: 'oval'         # Track type
+  length: 100.0        # Length of straight sections
+  radius: 30.0         # Radius of curved sections
+  width: 15.0          # Total width of the track
+  start_line_x: 0.0    # X-coordinate of the start/end line center
+  start_lane: 'bottom' # 'top' or 'bottom'
+```
+
+*   **type:** Currently supports 'oval' track type.
+*   **length:** Length of the straight sections.
+*   **radius:** Radius of the curved sections.
+*   **width:** Total width of the track.
+*   **start_line_x:** X-coordinate of the start/finish line.
+*   **start_lane:** Which lane the start line is on ('top' or 'bottom').
+
+#### Environment Parameters
+
+```yaml
+environment:
+  observation_components: 
+    - 'x'
+    - 'y'
+    - 'v'
+    - 'theta'
+    - 'steer_angle'
+    - 'dist_to_centerline'
+```
+
+*   **observation_components:** List of state components to include in the observation space. Available options include:
+    *   'x': X-position
+    *   'y': Y-position
+    *   'v': Velocity
+    *   'theta': Heading angle
+    *   'steer_angle': Steering angle
+    *   'dist_to_centerline': Distance to track centerline
+
+#### Car Parameters
+
+```yaml
+car:
+  wheelbase: 2.5         # L (meters)
+  mass: 1500             # Mass (kg)
+  max_speed: 20.0        # m/s
+  min_accel: -5.0        # m/s^2 (braking)
+  max_accel: 3.0         # m/s^2
+  max_steer_angle: 0.6   # radians (~34 degrees)
+  width: 1.8             # For collision/visualization
+  length: 4.0            # For collision/visualization
+  collision_radius: 1.5  # Simplified collision check radius
+  
+  # Physics coefficients
+  coeff_drag: 0.8         # Air resistance coefficient
+  coeff_rolling_resistance: 60.0 # Rolling resistance coefficient
+  coeff_friction: 1.1      # Combined tire friction coefficient
+  coeff_cornering_stiffness: 15.0 # Tire lateral stiffness factor
+  max_engine_force: 4500   # Max forward force from engine (N)
+  max_brake_force: 6000    # Max backward force from brakes (N)
+  gravity: 9.81          # Acceleration due to gravity (m/s^2)
+```
+
+*   **wheelbase:** Distance between front and rear axles.
+*   **mass:** Vehicle mass in kg.
+*   **max_speed:** Maximum speed in m/s.
+*   **min_accel/max_accel:** Acceleration limits in m/s².
+*   **max_steer_angle:** Maximum steering angle in radians.
+*   **width/length:** Vehicle dimensions for collision detection and visualization.
+*   **collision_radius:** Simplified radius for collision detection.
+*   **Physics coefficients:** Various coefficients for the physics model.
+
+#### Agent Configuration
+
+For single-agent mode, agent configuration is in `config_single_agent.yaml`:
+
+```yaml
+agent_config:
+  human:
+    description: "Controlled by user via keyboard arrow keys."
+  random:
+    description: "Takes random actions within the action space."
+  mpc:
+    description: "Model Predictive Control agent."
+    horizon: 15       # Prediction horizon (N)
+  rl:
+    description: "Reinforcement Learning agent."
+    model_path: "models/single_agent/trained_model.zip" # Path to the saved RL model
+```
+
+For multi-agent mode, agent configuration is in `config.yaml`:
+
+```yaml
+agents:
+  agent_0:
+    type: 'rl'           # rl, mpc, human, random
+    model_path: 'models/agent0_policy.zip' # Path for RL model
+    start_pos_idx: 0     # Index for starting position
+  agent_1:
+    type: 'human'
+    start_pos_idx: 1
+  agent_2:
+    type: 'random'
+    start_pos_idx: 2
+```
+
+*   **type:** Agent type ('human', 'random', 'mpc', 'rl').
+*   **model_path:** Path to the saved model for RL agents.
+*   **start_pos_idx:** Index for the starting position on the track.
+*   **horizon:** Prediction horizon for MPC agents.
+
+#### RL Hyperparameters
+
+```yaml
+rl:
+  learning_rate: 0.0003
+  discount_factor: 0.99
+  # ... other hyperparameters
+```
+
+*   **learning_rate:** Learning rate for RL algorithms.
+*   **discount_factor:** Discount factor for calculating returns.
+
