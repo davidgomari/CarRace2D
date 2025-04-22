@@ -12,56 +12,61 @@ class RLAgent(BaseAgent):
         self.model = None
         self.model_path = agent_info.get('model_path')
         self.device = agent_info.get('device', 'cpu') # Example: Allow config to specify device
-        self.obs_dim = None
-        self.action_dim = None
+        self.obs_dim = None # Will be inferred if loading, otherwise set during training
+        self.action_dim = None # Will be inferred if loading, otherwise set during training
 
         if not self.model_path:
+            # We still need a path to know where to potentially save/load from.
             raise ValueError(f"RL Agent {self.id}: 'model_path' must be specified in agent_info.")
 
-        print(f"RL Agent {self.id}: Loading model from {self.model_path}")
-        if not os.path.exists(self.model_path):
-            raise FileNotFoundError(f"RL Agent {self.id}: Model file not found at {self.model_path}.")
+        # Check if the model file exists BEFORE trying to load it
+        if os.path.exists(self.model_path):
+            print(f"RL Agent {self.id}: Found existing model at {self.model_path}. Attempting to load.")
+            try:
+                # Load state dictionary first to inspect it
+                state_dict = torch.load(self.model_path, map_location=self.device)
+                
+                # Infer dimensions from state_dict (assuming simple MLP structure)
+                param_names = list(state_dict.keys())
+                first_param = state_dict[param_names[0]]
+                last_param = state_dict[param_names[-1]]
+                
+                # Infer obs_dim from the input features of the first layer's weights
+                # Check if the first param is weights (2D) or bias (1D)
+                if len(first_param.shape) == 2:
+                    self.obs_dim = first_param.shape[1]
+                elif len(param_names) > 1 and len(state_dict[param_names[1]].shape) == 2:
+                     # If first is bias, try second param (assuming it's the first weight matrix)
+                     self.obs_dim = state_dict[param_names[1]].shape[1]
+                else:
+                    raise ValueError("Could not infer obs_dim from model state_dict (first layer weights not found).")
+                         
+                # Infer action_dim from the output features of the last layer (bias or weights)
+                self.action_dim = last_param.shape[0]
+                
+                print(f"RL Agent {self.id}: Inferred obs_dim={self.obs_dim}, action_dim={self.action_dim}")
 
-        try:
-            # Load state dictionary first to inspect it
-            state_dict = torch.load(self.model_path, map_location=self.device)
-            
-            # Infer dimensions from state_dict (assuming simple MLP structure)
-            param_names = list(state_dict.keys())
-            first_param = state_dict[param_names[0]]
-            last_param = state_dict[param_names[-1]]
-            
-            # Infer obs_dim from the input features of the first layer's weights
-            # Check if the first param is weights (2D) or bias (1D)
-            if len(first_param.shape) == 2:
-                self.obs_dim = first_param.shape[1]
-            elif len(param_names) > 1 and len(state_dict[param_names[1]].shape) == 2:
-                 # If first is bias, try second param (assuming it's the first weight matrix)
-                 self.obs_dim = state_dict[param_names[1]].shape[1]
-            else:
-                raise ValueError("Could not infer obs_dim from model state_dict (first layer weights not found).")
-                     
-            # Infer action_dim from the output features of the last layer (bias or weights)
-            self.action_dim = last_param.shape[0]
-            
-            print(f"RL Agent {self.id}: Inferred obs_dim={self.obs_dim}, action_dim={self.action_dim}")
+                # Initialize the network structure with inferred dimensions
+                self.model = ReinforcePolicy(self.obs_dim, self.action_dim) 
+                
+                # Load the state dictionary into the initialized model
+                self.model.load_state_dict(state_dict)
+                
+                # Move model to the correct device and set to evaluation mode
+                self.model.to(self.device)
+                self.model.eval() 
+                print(f"RL Agent {self.id}: Successfully loaded model from {self.model_path} to device {self.device}")
 
-            # Initialize the network structure with inferred dimensions
-            self.model = ReinforcePolicy(self.obs_dim, self.action_dim) 
-            
-            # Load the state dictionary into the initialized model
-            self.model.load_state_dict(state_dict)
-            
-            # Move model to the correct device and set to evaluation mode
-            self.model.to(self.device)
-            self.model.eval() 
-            print(f"RL Agent {self.id}: Successfully loaded model from {self.model_path} to device {self.device}")
-
-        except Exception as e:
-            print(f"RL Agent {self.id}: Failed to load model or infer dimensions from {self.model_path}. Error: {e}")
-            self.model = None # Ensure model is None if loading fails
-            # Re-raise the exception to prevent agent use without a model
-            raise RuntimeError(f"RL Agent {self.id} initialization failed.") from e
+            except Exception as e:
+                print(f"RL Agent {self.id}: Failed to load model or infer dimensions from {self.model_path}. Error: {e}")
+                # Set model to None and re-raise to indicate a problem with the existing file
+                self.model = None 
+                raise RuntimeError(f"RL Agent {self.id} failed to load existing model file.") from e
+        else:
+            # Model file does not exist - this is expected during initial training.
+            # The model will be created and assigned later by the training script.
+            print(f"RL Agent {self.id}: Model file not found at {self.model_path}. A new model will be created during training.")
+            self.model = None # Ensure model is None initially
 
     def _prepare_observation_vector(self, observation):
         """Converts observation (dict or array) into a flat numpy array."""
