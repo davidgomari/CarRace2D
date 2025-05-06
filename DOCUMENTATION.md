@@ -72,6 +72,26 @@ To train a basic RL agent:
 
 ## Customization Guide
 
+### Customizing the UI Sidebar
+
+You can fully customize the columns shown in the sidebar information table via the `ui.sidebar_columns` section in your config file. Each column can display any property from the car state or agent info, and you can specify the header and formatting.
+
+Example:
+```yaml
+ui:
+  sidebar_columns:
+    - { key: 'agent_id', header: 'Agent', format: '' }
+    - { key: 'agent_type', header: 'Type', format: '' }
+    - { key: 'x', header: 'X', format: '.1f' }
+    - { key: 'y', header: 'Y', format: '.1f' }
+    - { key: 'v', header: 'Spd', format: '.1f' }
+    - { key: 'lap', header: 'Lap', format: 'd' }
+    - { key: 'dist_to_centerline', header: 'dC', format: '.2f' }
+    - { key: 'dist_to_boundary', header: 'dB', format: '.2f' }
+    - { key: 'total_progress', header: 'P%', format: '.2f'}
+```
+If the `ui.sidebar_columns` section is missing, a minimal default sidebar will be shown.
+
 ### Modifying Observations
 
 To add or remove observations from the environment:
@@ -82,10 +102,11 @@ To add or remove observations from the environment:
    ```yaml
    environment:
      observation_components:
-       - 'x'
-       - 'y'
        - 'v'
-       - 'theta'
+       - 'steer_angle'
+       - 'accel'
+       - 'dist_to_centerline'
+       # Optionally: 'accel_lat', 'x', 'y', 'theta', etc.
    ```
    - Add or remove components from this list
 
@@ -315,6 +336,7 @@ training:
   learning_rate: 0.001 # Learning rate for the optimizer
   discount_factor: 0.99 # Discount factor for the optimizer
   rl_algo: 'reinforce' # 'reinforce', 'ppo', 'td3', etc.
+  resume_training: True # If True, resume from last saved model if available
 ```
 
 *   **num_episodes:** Number of episodes to train for.
@@ -328,6 +350,7 @@ training:
 *   **learning_rate:** Learning rate for the optimizer.
 *   **discount_factor:** Discount factor for calculating returns.
 *   **rl_algo:** The RL algorithm to use ('reinforce' by default).
+*   **resume_training:** If True, training resumes from the last saved model (if available). Models are saved automatically during training.
 
 > **Note:** For faster training, set `render_mode` to `None` in the training configuration. This will run the training without GUI visualization, which is significantly faster. Use `render_mode: 'human'` when you want to monitor the training progress visually.
 
@@ -355,12 +378,11 @@ track:
 ```yaml
 environment:
   observation_components: 
-    - 'x'
-    - 'y'
     - 'v'
-    - 'theta'
     - 'steer_angle'
+    - 'accel'
     - 'dist_to_centerline'
+    # Optionally: 'accel_lat', 'x', 'y', 'theta', etc.
 ```
 
 *   **observation_components:** List of state components to include in the observation space. Available options include:
@@ -370,6 +392,8 @@ environment:
     *   'theta': Heading angle
     *   'steer_angle': Steering angle
     *   'dist_to_centerline': Distance to track centerline
+    *   'accel': Longitudinal acceleration
+    *   'accel_lat': Lateral acceleration
 
 #### Car Parameters
 
@@ -455,6 +479,24 @@ rl:
 *   **learning_rate:** Learning rate for RL algorithms.
 *   **discount_factor:** Discount factor for calculating returns.
 
+#### UI Sidebar Configuration
+
+```yaml
+ui:
+  sidebar_columns:
+    - { key: 'agent_id', header: 'Agent', format: '' }
+    - { key: 'agent_type', header: 'Type', format: '' }
+    - { key: 'x', header: 'X', format: '.1f' }
+    - { key: 'y', header: 'Y', format: '.1f' }
+    - { key: 'v', header: 'Spd', format: '.1f' }
+    - { key: 'lap', header: 'Lap', format: 'd' }
+    - { key: 'dist_to_centerline', header: 'dC', format: '.2f' }
+    - { key: 'dist_to_boundary', header: 'dB', format: '.2f' }
+    - { key: 'total_progress', header: 'P%', format: '.2f'}
+```
+
+*   **sidebar_columns:** List of columns to display in the sidebar. Each entry specifies the data key, header, and format. You can add or remove columns as needed.
+
 ## Performance Tips
 
 ### Simulation Performance
@@ -529,6 +571,14 @@ A: Create a new agent class inheriting from `BaseAgent` and implement the requir
    - Limited support for custom visualizations
 
 ## Changelog
+
+### Version 2.1
+- Resume training from saved models (`resume_training` option).
+- Improved reward shaping and progress/lap tracking.
+- Added support for new observation components (`accel`, `accel_lat`).
+- Improved car physics with friction circle and lateral acceleration.
+- Performance optimizations and UI enhancements.
+- Traininig automatically uses GPU if available.
 
 ### Version 2.0
 - Updated UI with a cyberpunk modern city theme.

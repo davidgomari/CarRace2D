@@ -1,11 +1,7 @@
 # track.py
 import numpy as np
 
-# TODO:
-# - check_lap_completion: the agent can turn around in his place near the start lane without going throuth the whole track
-
 class OvalTrack:
-    # def __init__(self, length, radius, width, start_line_x=0.0, start_lane='bottom'):
     def __init__(self, config):
         self.length = config['length']  # Straight section length
         self.radius = config['radius']  # Curve radius
@@ -27,14 +23,40 @@ class OvalTrack:
         self.inner_radius = self.radius - self.width / 2.0
         self.outer_radius = self.radius + self.width / 2.0
 
-    def get_centerline_point(self, progress_ratio):
-        """ Gets a point on the centerline based on progress (0 to 1). """
-        dist = progress_ratio * self.centerline_length
-        # TODO: Implement logic to map distance to (x, y) on the oval centerline
-        # This involves checking which segment (straight/curve) the distance falls into.
-        x, y = 0, 0 # Placeholder
-        theta = 0   # Placeholder (tangent angle)
-        return x, y, theta
+    def __to_centerline_point__(self, x, y):
+        """Calculate angle relative to curve center for points in curved sections."""
+        if x > self.length/2:  # Right curve
+            dx = x - self.curve1_center_x
+            dy = y - self.curve1_center_y
+            return np.arctan2(dy, dx)
+        elif x < -self.length/2:  # Left curve
+            dx = x - self.curve2_center_x
+            dy = y - self.curve2_center_y
+            return np.arctan2(dy, dx)
+        else:  # Straight section - shouldn't be called for these
+            return 0.0
+
+    def calculate_progress(self, last_x, last_y, x, y):
+        cond_x_in_middle      = (-self.length/2 <= x <= self.length/2)
+        cond_last_x_in_middle = (-self.length/2 <= last_x <= self.length/2)
+        
+        if cond_x_in_middle and cond_last_x_in_middle:
+            # Both points in straight section
+            delta_progress = abs(last_x - x) / self.centerline_length
+            return delta_progress
+        elif (x > self.length/2 and last_x > self.length/2) or (x < -self.length/2 and last_x < -self.length/2):
+            # Points are in the same curve
+            theta_last = self.__to_centerline_point__(last_x, last_y)
+            theta = self.__to_centerline_point__(x, y)
+            delta_angle = (theta - theta_last) % (2 * np.pi)
+            if delta_angle > np.pi:
+                delta_angle = 2 * np.pi - delta_angle
+            delta_progress = delta_angle * self.radius / self.centerline_length
+            return delta_progress
+        else:
+            # Points are in different curves - approximate using straight-line distance
+            delta_progress = np.sqrt((x - last_x)**2 + (y - last_y)**2) / self.centerline_length
+            return delta_progress
 
     def is_on_track(self, x, y):
         """ Checks if point (x, y) is within the track boundaries. (OK)"""
@@ -57,7 +79,7 @@ class OvalTrack:
         """Calculate the distance from a point to the centerline."""
         # For straight sections
         if -self.length / 2 <= x <= self.length / 2:
-            return abs(abs(y) - self.radius)
+            return abs(y) - self.radius
         
         # For curved sections
         if x > self.length / 2:  # Right curve
@@ -71,7 +93,7 @@ class OvalTrack:
         dist_to_center = np.sqrt(dx*dx + dy*dy)
         
         # Distance to centerline is difference between distance to center and radius
-        return abs(dist_to_center - self.radius)
+        return dist_to_center - self.radius
 
     def check_lap_completion(self, car_x, car_last_x, car_y):
         """ Checks if the car crossed the start/finish line. """
@@ -114,3 +136,49 @@ class OvalTrack:
             positions.append(np.array([x, y, v, theta], dtype=np.float32))
 
         return positions
+
+    def is_correct_direction(self, x, y, theta):
+        """Check if the car is moving in the correct direction (counterclockwise).
+        
+        Args:
+            x (float): Car's x position
+            y (float): Car's y position
+            theta (float): Car's heading angle in radians
+        
+        Returns:
+            bool: True if car is moving in correct direction, False otherwise
+        """
+        # Normalize theta to [-pi, pi]
+        theta = (theta + np.pi) % (2 * np.pi) - np.pi
+        
+        # For straight sections
+        if -self.length / 2 <= x <= self.length / 2:
+            if y < 0:  # Bottom straight
+                # Should be moving right (theta close to 0)
+                return abs(theta) < np.pi/2
+            else:  # Top straight
+                # Should be moving left (theta close to pi or -pi)
+                return abs(abs(theta) - np.pi) < np.pi/2
+        
+        # For curved sections
+        elif x > self.length / 2:  # Right curve
+            # Calculate angle to center of right curve
+            dx = x - self.curve1_center_x
+            dy = y - self.curve1_center_y
+            angle_to_center = np.arctan2(dy, dx)
+            # Desired heading should be perpendicular to angle_to_center + pi/2
+            desired_theta = angle_to_center + np.pi/2
+            # Normalize the difference
+            theta_diff = abs((theta - desired_theta + np.pi) % (2 * np.pi) - np.pi)
+            return theta_diff < np.pi/2
+            
+        else:  # Left curve
+            # Calculate angle to center of left curve
+            dx = x - self.curve2_center_x
+            dy = y - self.curve2_center_y
+            angle_to_center = np.arctan2(dy, dx)
+            # Desired heading should be perpendicular to angle_to_center + pi/2
+            desired_theta = angle_to_center + np.pi/2
+            # Normalize the difference
+            theta_diff = abs((theta - desired_theta + np.pi) % (2 * np.pi) - np.pi)
+            return theta_diff < np.pi/2

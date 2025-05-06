@@ -20,7 +20,7 @@ track:
   type: 'oval'
   length: 100.0               # Length of straight sections
   radius: 30.0                # Radius of curved sections
-  width: 10.0                 # Total width of the track (2 * omega_r from image)
+  width: 15.0                 # Total width of the track (2 * omega_r from image)
   start_line_x: 0.0           # X-coordinate of the start/end line center
   start_lane: 'bottom'   # 'top' or 'bottom'
 
@@ -28,11 +28,11 @@ track:
 environment:
   # List the observation components to include in the observation space
   # Available keys (can be expanded): 'x', 'y', 'v', 'theta', 'steer_angle', 'dist_to_centerline', ...
-  observation_components: 
-    - 'x'
-    - 'y'
+  observation_components:
     - 'v'
-    - 'theta'
+    - 'steer_angle'
+    - 'accel'
+    - 'dist_to_centerline'
 
 # Car Parameters
 car:
@@ -75,3 +75,24 @@ rl:
   learning_rate: 0.0003
   discount_factor: 0.99
   # ... other hyperparameters
+
+# UI Configuration
+ui:
+  sidebar_columns:
+    # Define columns for the sidebar information table.
+    # 'key': How data is accessed (from car data, or special keys like 'agent_id', 'lap', 'agent_type').
+    # 'header': Text displayed in the table header.
+    # 'format': Python f-string format specifier (e.g., '.1f' for one decimal place).
+    # WARNING: For keys other than 'agent_id', 'lap', 'agent_type', the UI will attempt to find the key
+    #          in the car's data. Ensure these keys exist in the car data or observation components
+    #          if you want to display them. 'dist_to_centerline' is calculated separately.
+    - { key: 'agent_id', header: 'Agent', format: '' }
+    - { key: 'agent_type', header: 'Type', format: '' }
+    - { key: 'x', header: 'X', format: '.1f' }
+    - { key: 'y', header: 'Y', format: '.1f' }
+    - { key: 'v', header: 'Spd', format: '.1f' }
+    - { key: 'lap', header: 'Lap', format: 'd' }
+    - { key: 'dist_to_centerline', header: 'dC', format: '.2f' }
+    - { key: 'dist_to_boundary', header: 'dB', format: '.2f' }
+    - { key: 'total_progress', header: 'P%', format: '.2f'}
+    # Add or remove columns as needed

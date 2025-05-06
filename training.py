@@ -24,32 +24,85 @@ def save_model(model, mode, agent_id=None):
 
 def single_agent_training(config):
     """Train a single RL agent."""
+    # Set training mode flag
+    config['training_mode'] = True
+    
     # Set up environment
     # --- Use the training render mode specifically ---
     training_render_mode = config.get('training', {}).get('render_mode', None) # Get training render mode
     original_sim_render_mode = config.get('simulation', {}).get('render_mode') # Store original sim mode
     
+    # --- Use the training max_steps specifically ---
+    training_max_steps = config.get('training', {}).get('max_steps', 1000) # Default if missing
+    original_sim_max_steps = config.get('simulation', {}).get('max_steps')
+    
     # Temporarily override simulation render mode for environment setup
     if 'simulation' not in config: config['simulation'] = {}
     config['simulation']['render_mode'] = training_render_mode 
+    config['simulation']['max_steps'] = training_max_steps
     
-    print(f"Setting up training environment with render_mode: {training_render_mode}") # Debug print
+    print(f"Setting up training environment with render_mode: {training_render_mode}, max_steps: {training_max_steps}") 
     env, agents = setup_environment('single', 'rl', config)
     
     # --- Restore original simulation render mode in the config object ---
-    # This is important if the config object is used later elsewhere in the training script.
     config['simulation']['render_mode'] = original_sim_render_mode
+    config['simulation']['max_steps'] = original_sim_max_steps
     # -------------------------------------------------
+
+    # Set the device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Training on device: {device}")
 
     # Get the RL agent
     rl_agent = agents['agent_0']
     
     rl_algo = config['training']['rl_algo']
-    # Create and train the model
+    # --- Initialize or Load Model (Algorithm Independent) --- 
+    model = None # Use a local variable first
+    model_path = config['agent_config']['rl']['model_path']
+    resume_training = config['training']['resume_training']
+    obs_dim = sum(space.shape[0] for space in env.observation_space.spaces.values())
+    action_dim = env.action_space.shape[0]
+    
+    if resume_training:
+        if os.path.exists(model_path):
+            try:
+                print(f"Attempting to resume training from {model_path}")
+                # We need to know the model type to instantiate before loading state_dict
+                # For now, assume ReinforcePolicy, but this needs generalization for other algos
+                if rl_algo == 'reinforce':
+                    model = ReinforcePolicy(obs_dim, action_dim)
+                    state_dict = torch.load(model_path, map_location=device)
+                    model.load_state_dict(state_dict)
+                    model.to(device)
+                    print(f"Successfully loaded model from {model_path} for resuming.")
+                else:
+                    # Placeholder: Add logic here to load models for other algorithms (PPO, SAC, etc.)
+                    print(f"Warning: Resume logic not yet implemented for algorithm '{rl_algo}'. Starting fresh.")
+                    pass # Fall through to create new model
+            except Exception as e:
+                print(f"Warning: Failed to load model from {model_path} for resuming: {e}. Starting fresh.")
+                model = None # Ensure we create a new one below
+        else:
+            print(f"Warning: Resume training enabled, but model file not found at {model_path}. Starting fresh.")
+            
+    # If model is still None (resume_training=False or loading failed/not found/not implemented)
+    if model is None:
+        print(f"Initializing a new {rl_algo} model for training.")
+        if rl_algo == 'reinforce':
+            model = ReinforcePolicy(obs_dim, action_dim).to(device)
+        else:
+            # Placeholder: Add logic here to create models for other algorithms
+            raise ValueError(f"Model creation not implemented for algorithm: {rl_algo}")
+            
+    # Assign the created/loaded model to the agent
+    rl_agent.model = model
+    # ----------------------------------------------------------
+    
     if rl_algo == 'reinforce':
-        obs_dim = sum(space.shape[0] for space in env.observation_space.spaces.values())
-        rl_agent.model = ReinforcePolicy(obs_dim, env.action_space.shape[0])
+        # Initialize Reinforce-specific optimizer
         optimizer = Adam(rl_agent.model.parameters(), lr=config['training']['learning_rate'])
+        
     else:
         raise ValueError(f"Unsupported RL algorithm: {rl_algo}")
     
@@ -57,6 +110,11 @@ def single_agent_training(config):
     num_episodes = config['training']['num_episodes']
     max_steps = config['training']['max_steps']
     discount_factor = config['training']['discount_factor']
+
+    # --- Tracking for Average Reward ---
+    from collections import deque
+    recent_rewards = deque(maxlen=20) # Store rewards of last 20 episodes
+    # -----------------------------------
 
     # Run the training episodes with visualization
     print(f"Starting training with {num_episodes} episodes...")
@@ -91,7 +149,7 @@ def single_agent_training(config):
                     return
             # --- End Handle Pygame Events ---
 
-            action, log_prob = rl_agent.model.act(state)
+            action, log_prob = rl_agent.model.act(state, episode)
             next_observation, reward, done, truncated, info = env.step(action)
             state = next_observation
             ep_rewards.append(reward)
@@ -121,7 +179,7 @@ def single_agent_training(config):
         for r in reversed(ep_rewards):
             R = r + discount_factor * R
             returns.insert(0, R)
-        returns = torch.tensor(returns)
+        returns = torch.tensor(returns, device=device)
         # Normalize returns for improved stability
         returns = (returns - returns.mean()) / (returns.std() + 1e-9)
 
@@ -134,7 +192,14 @@ def single_agent_training(config):
         loss.backward()
         optimizer.step()
 
-        print(f"Episode {episode+1:3d}: Total Reward = {total_reward:.2f}")
+        # --- Update and Print Average Reward ---
+        recent_rewards.append(total_reward)
+        avg_reward_last_20 = sum(recent_rewards) / len(recent_rewards)
+        # ---------------------------------------
+        
+        # Access the car's final progress
+        final_progress = env.cars['agent_0'].total_progress
+        print(f"Episode {episode+1:3d}: Total Reward = {total_reward:8.2f}, Avg Reward (Last 20) = {avg_reward_last_20:8.2f}, Final Progress = {final_progress:.4f}")
        
     
     # Save the model

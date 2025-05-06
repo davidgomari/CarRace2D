@@ -21,12 +21,34 @@ class UI:
         self.glow_layers = 2  # Reduced number of glow layers
         
         # Sidebar Configuration - Cyberpunk style
-        self.sidebar_width = 250  # Width of the sidebar in pixels
+        self.sidebar_width = 420  # Increased width for table
         self.sidebar_color = (15, 15, 20)  # Very dark background
         self.sidebar_text_color = (0, 255, 255)  # Cyan neon text
-        self.font_size = 18
-        self.line_height = 22
+        self.header_text_color = (255, 255, 0) # Yellow for headers
+        self.table_line_color = (50, 50, 60) # Dark grey for lines
+        self.font_size = 24 # Slightly smaller for table
+        self.line_height = 20 # Adjusted for smaller font
         
+        # Load sidebar table columns from config
+        self.sidebar_columns = config.get('ui', {}).get('sidebar_columns', [])
+        if not self.sidebar_columns:
+            print("Warning: UI sidebar_columns not found in config. Sidebar will be minimal.")
+            # Provide default fallback columns if config is missing
+            self.sidebar_columns = [
+                { 'key': 'agent_id', 'header': 'Agent', 'format': '' },
+                { 'key': 'v', 'header': 'Spd', 'format': '.1f' },
+                { 'key': 'lap', 'header': 'Lap', 'format': 'd' }
+            ]
+            
+        # Calculate column widths dynamically (simple equal distribution for now)
+        self.column_widths = []
+        if self.sidebar_columns:
+            padding = 10 # Total padding within the sidebar
+            available_width = self.sidebar_width - padding * 2
+            base_width = available_width // len(self.sidebar_columns)
+            remainder = available_width % len(self.sidebar_columns)
+            self.column_widths = [base_width + (1 if i < remainder else 0) for i in range(len(self.sidebar_columns))] 
+
         # Bottom bar configuration - Cyberpunk style
         self.bottom_bar_height = 50  # Increased height for more buttons
         self.bottom_bar_color = (10, 10, 15)  # Even darker than sidebar
@@ -425,71 +447,102 @@ class UI:
         if not self.font:
             return
         
-        start_x = self.sim_area_rect.width + 10  # Start 10px into the sidebar
+        padding = 10
+        start_x = self.sim_area_rect.width + padding
         current_y = 10
+        table_start_y = 50 # Leave space for sim info
         
-        # --- Simulation Info with cyberpunk style ---
+        # --- Simulation Info --- (Keep this above the table)
         sim_time = current_step * dt
-        time_text = self.font.render(f"Time: {sim_time:.2f} s", True, self.sidebar_text_color)
+        time_text = self.font.render(f"Time: {sim_time:.2f} s", True, self.header_text_color) # Use header color
         self.screen.blit(time_text, (start_x, current_y))
         current_y += self.line_height
         
-        steps_text = self.font.render(f"Step: {current_step}", True, self.sidebar_text_color)
+        steps_text = self.font.render(f"Step: {current_step}", True, self.header_text_color) # Use header color
         self.screen.blit(steps_text, (start_x, current_y))
-        current_y += self.line_height * 1.5  # Add extra space
+        current_y = table_start_y # Reset Y for table
         
-        # --- Agent Info with cyberpunk style ---
-        title_text = self.font.render("Agent Information:", True, self.sidebar_text_color)
-        self.screen.blit(title_text, (start_x, current_y))
-        current_y += self.line_height * 1.2
+        # --- Draw Table Header --- 
+        header_y = current_y
+        col_x = start_x
+        for i, col_info in enumerate(self.sidebar_columns):
+            header_text = self.font.render(col_info['header'], True, self.header_text_color)
+            # Center header text within the column width
+            text_rect = header_text.get_rect(centerx=col_x + self.column_widths[i] // 2, top=header_y)
+            self.screen.blit(header_text, text_rect)
+            col_x += self.column_widths[i]
         
-        # Sort agent IDs for consistent display order
+        current_y += self.line_height * 1.2 # Space after header
+        # Draw header separator line
+        pygame.draw.line(self.screen, self.table_line_color, 
+                         (start_x - padding//2, current_y), 
+                         (self.sim_area_rect.width + self.sidebar_width - padding//2, current_y), 1)
+        current_y += padding // 2 # Space after line
+        
+        # --- Draw Table Rows --- 
         sorted_agent_ids = sorted(cars.keys())
+        
+        car_data_cache = {agent_id: car.get_data() for agent_id, car in cars.items()} # Cache car data
         
         for agent_id in sorted_agent_ids:
             car = cars.get(agent_id)
             if not car:
                 continue
             
-            # Agent ID and Color Indicator with cyberpunk style
-            id_text = self.font.render(f"{agent_id}:", True, self.sidebar_text_color)
-            id_rect = id_text.get_rect(topleft=(start_x + 25, current_y))
-            
-            # Draw a simplified glowing circle for the agent color
-            if self.use_simple_glow:
-                # Draw multiple circles with decreasing size for a simple glow effect
-                for i in range(self.glow_layers, 0, -1):
-                    pygame.draw.circle(self.screen, pygame.Color(car.color), 
-                                     (start_x + 10, current_y + self.font.get_height() // 2), 
-                                     7 + i)
-            else:
-                # Original glow effect with alpha blending (more expensive)
-                glow_surface = pygame.Surface((20, 20), pygame.SRCALPHA)
-                for i in range(self.neon_glow_radius, 0, -1):
-                    alpha = 128 // i
-                    glow_color = (*pygame.Color(car.color)[:3], alpha)
-                    pygame.draw.circle(glow_surface, glow_color, (10, 10), 7 + i)
-                self.screen.blit(glow_surface, (start_x + 3, current_y + self.font.get_height() // 2 - 10))
-            
-            # Draw the main circle
-            pygame.draw.circle(self.screen, pygame.Color(car.color), (start_x + 10, current_y + self.font.get_height() // 2), 7)
-            self.screen.blit(id_text, id_rect)
-            current_y += self.line_height
-            
-            # Position with cyberpunk style
-            pos_text = self.font.render(f"  Pos: ({car.x:.1f}, {car.y:.1f})", True, self.sidebar_text_color)
-            self.screen.blit(pos_text, (start_x, current_y))
-            current_y += self.line_height
-            
-            # Speed with cyberpunk style
-            speed_text = self.font.render(f"  Speed: {car.v:.2f} m/s", True, self.sidebar_text_color)
-            self.screen.blit(speed_text, (start_x, current_y))
-            current_y += self.line_height
-            
-            # Lap Count with cyberpunk style
-            lap_text = self.font.render(f"  Lap: {car.lap_count}", True, self.sidebar_text_color)
-            self.screen.blit(lap_text, (start_x, current_y))
-            current_y += self.line_height * 1.2  # Extra space between agents
+            row_y = current_y
+            col_x = start_x
+            car_data = car_data_cache.get(agent_id, {})
+
+            for i, col_info in enumerate(self.sidebar_columns):
+                key = col_info['key']
+                fmt = col_info['format']
+                value = "N/A" # Default value
+                
+                try:
+                    if key == 'agent_id':
+                        value = agent_id.split('_')[-1] # Show only the number
+                    elif key == 'lap':
+                        value = car.lap_count
+                    elif key == 'agent_type':
+                        # Agent type might need to be fetched from the main config
+                        value = self.config.get('agents', {}).get(agent_id, {}).get('type', '?')[:3].upper() # Short type
+                    elif key == 'dist_to_centerline':
+                        # Calculate distance to centerline
+                        value = self.track.get_distance_to_centerline(car.x, car.y)
+                    elif key == 'dist_to_boundary':
+                        # Calculate distance to boundary
+                        dist_center = self.track.get_distance_to_centerline(car.x, car.y)
+                        value = self.track.half_width - abs(dist_center)
+                    elif key == 'total_progress':
+                        value = car.total_progress
+                    else:
+                        # Try to get from cached car data
+                        if key in car_data:
+                             value = car_data[key]
+                        # Optionally: Add fallbacks for other calculated values here
+                             
+                    # Format the value if possible
+                    if value != "N/A" and fmt:
+                        value = f"{value:{fmt}}"
+                        
+                except Exception as e:
+                    # Keep "N/A" on error, maybe log e
+                    # print(f"Sidebar Error fetching {key} for {agent_id}: {e}")
+                    pass
+                    
+                # Render and blit the cell text (left-aligned for simplicity now)
+                cell_text = self.font.render(str(value), True, self.sidebar_text_color)
+                # Center text within the column width
+                text_rect = cell_text.get_rect(centerx=col_x + self.column_widths[i] // 2, top=row_y)
+                self.screen.blit(cell_text, text_rect)
+                col_x += self.column_widths[i]
+                
+            current_y += self.line_height # Move to the next row
+            # Optional: Draw row separator lines
+            # pygame.draw.line(self.screen, self.table_line_color, 
+            #                  (start_x - padding//2, current_y), 
+            #                  (self.sim_area_rect.width + self.sidebar_width - padding//2, current_y), 1)
+            # current_y += padding // 2
     
     def _draw_bottom_bar(self):
         """Draw the bottom bar with buttons in cyberpunk style."""

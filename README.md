@@ -12,6 +12,8 @@ A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It 
 *   **Basic Physics:** Implements a kinematic bicycle model with considerations for engine/brake forces, drag, and rolling resistance.
 *   **Training Support:** Built-in training functionality for RL agents with configurable parameters and visualization options.
 *   **UI Controls:** Interactive controls during simulation and training (Back, Reset, Pause/Resume).
+*   **Customizable UI Sidebar:** Configure which agent/car properties are displayed in the sidebar via the config file.
+*   **Flexible Observations:** Easily add new observation components (e.g., acceleration) to the environment and UI.
 
 ## Visuals
 
@@ -29,8 +31,8 @@ A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It 
 
 1.  **Clone the repository:**
     ```bash
-    git clone "https://github.com/davidgomari/CarRace2D"
-    cd "CarRace2D"
+    git clone <your-repository-url>
+    cd <repository-directory>
     ```
 
 2.  **Create and activate a virtual environment (Recommended):**
@@ -77,6 +79,7 @@ During both simulation and training, the following buttons are available:
 *   **Back Button:** Returns to the main menu. During training, this will save the current model before exiting.
 *   **Reset Button:** Resets the current episode, placing all agents back at their starting positions.
 *   **Pause/Resume Button:** Toggles between pausing and resuming the simulation/training.
+*   **Sidebar Columns:** You can customize which agent/car properties are shown in the sidebar by editing the `ui.sidebar_columns` section in your config file.
 
 ### Agent Types
 
@@ -84,6 +87,10 @@ During both simulation and training, the following buttons are available:
 *   **Random:** Selects actions randomly from the allowed action space.
 *   **MPC:** Uses CasADi to solve an optimization problem for determining the best action.
 *   **RL:** Implements a configurable RL agent that can load trained models and use different RL algorithms.
+
+### Training
+
+To resume training from a previous model, set `resume_training: True` in your config file. Models are saved automatically during training.
 
 ## Documentation
 

@@ -30,8 +30,11 @@ def get_agent_type():
 def setup_environment(mode, agent_type, config):
     """Set up the environment and agents based on configuration."""
     
+    # Determine if we're in training mode
+    is_training = config.get('training_mode', False)  # Default to simulation mode
+    
     if mode == 'single':
-        print(f"Running single-agent simulation, requested type: {agent_type}")
+        print(f"Running single-agent {'training' if is_training else 'simulation'}, requested type: {agent_type}")
         # Update the config for the single agent based on the chosen type
         if agent_type in config.get('agent_config', {}):
             # Set the agent type in the main 'agents' section
@@ -39,12 +42,21 @@ def setup_environment(mode, agent_type, config):
             # Merge specific parameters from 'agent_config' into 'agent_0'
             agent_specific_config = config['agent_config'][agent_type]
             config['agents']['agent_0'].update(agent_specific_config)
+            # Set training_mode based on whether we're in training
+            if agent_type == 'rl':
+                config['agents']['agent_0']['training_mode'] = is_training
             print(f"Loaded configuration for {agent_type} agent.")
         else:
             print(f"Warning: Configuration for agent type '{agent_type}' not found in agent_config.")
             print("Proceeding with default agent_0 config (if any) or environment defaults.")
             # Ensure 'type' is set even if config is missing, env might handle it
             config['agents']['agent_0']['type'] = agent_type 
+
+    # For multi-agent mode, set training_mode for all RL agents
+    else:
+        for agent_id, agent_config in config.get('agents', {}).items():
+            if agent_config.get('type') == 'rl':
+                agent_config['training_mode'] = is_training
 
     # Determine if any agent requires human render mode
     is_human_controlled = False

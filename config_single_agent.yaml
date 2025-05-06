@@ -1,7 +1,7 @@
 # Simulation Parameters
 simulation:
-  num_episodes: 3      # Number of episodes to run
-  max_steps: 1000      # Max steps per episode
+  num_episodes: 10      # Number of episodes to run
+  max_steps: 10000      # Max steps per episode
   render_mode: 'human' # 'human', 'rgb_array', or None
   render_fps: 60
   dt: 0.1              # Simulation time step (seconds)
@@ -11,13 +11,14 @@ simulation:
   
 # Training Parameters
 training:
-  num_episodes: 500     # Number of training episodes
-  max_steps: 1000       # Max steps per episode
-  render_mode: 'human' # 'human', 'rgb_array', or None (Usually None during training)
-  render_fps: 60        # Frames per second for rendering (if render_mode is 'human')
+  num_episodes: 1000     # Number of training episodes
+  max_steps: 5000       # Max steps per episode
+  render_mode: None # 'human', 'rgb_array', or None (Usually None during training)
+  render_fps: 5        # Frames per second for rendering (if render_mode is 'human')
   save_frequency: 100   # Save model every N episodes
-  learning_rate: 0.001 # Learning rate for the optimizer
-  discount_factor: 0.99 # Discount factor for the optimizer
+  resume_training: True # if True, we load latest model from the model_path and then start the training
+  learning_rate: 0.002 # Learning rate for the optimizer
+  discount_factor: 0.9 # Discount factor for the optimizer
   rl_algo: 'reinforce'   # 'ppo', 'td3', 'sac', 'reinforce'
 
 # Track Parameters (Example for Oval)
@@ -34,11 +35,9 @@ environment:
   # List the observation components to include in the observation space
   # Available keys (can be expanded): 'x', 'y', 'v', 'theta', 'steer_angle', 'dist_to_centerline', ...
   observation_components: 
-    - 'x'
-    - 'y'
     - 'v'
-    - 'theta'
     - 'steer_angle'
+    - 'accel'
     - 'dist_to_centerline'
 
 # Car Parameters
@@ -92,6 +91,27 @@ agents:
 
 # RL Hyperparameters (Example - adjust based on library/algo)
 rl:
-  learning_rate: 0.0003
-  discount_factor: 0.99
+  learning_rate: 0.001
+  discount_factor: 0.9
   # ... other hyperparameters
+
+# UI Configuration
+ui:
+  sidebar_columns:
+    # Define columns for the sidebar information table.
+    # 'key': How data is accessed (from car data, or special keys like 'agent_id', 'lap', 'agent_type').
+    # 'header': Text displayed in the table header.
+    # 'format': Python f-string format specifier (e.g., '.1f' for one decimal place).
+    # WARNING: For keys other than 'agent_id', 'lap', 'agent_type', the UI will attempt to find the key
+    #          in the car's data. Ensure these keys exist in the car data or observation components
+    #          if you want to display them. 'dist_to_centerline' is calculated separately.
+    - { key: 'agent_id', header: 'Agent', format: '' }
+    - { key: 'agent_type', header: 'Type', format: '' }
+    - { key: 'x', header: 'X', format: '.1f' }
+    - { key: 'y', header: 'Y', format: '.1f' }
+    - { key: 'v', header: 'Spd', format: '.1f' }
+    - { key: 'lap', header: 'Lap', format: 'd' }
+    - { key: 'dist_to_centerline', header: 'dC', format: '.2f' }
+    - { key: 'dist_to_boundary', header: 'dB', format: '.2f' }
+    - { key: 'total_progress', header: 'P%', format: '.2f'}
+    # Add or remove columns as needed

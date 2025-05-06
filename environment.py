@@ -2,6 +2,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+import torch
 import pygame # For rendering and human input
 import yaml
 import os # Added import os
@@ -14,6 +15,8 @@ from agents.random_agent import RandomAgent
 from agents.rl_agent import RLAgent
 from agents.mpc_agent import MPCAgent
 from ui import UI
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class RacingEnv(gym.Env):
     metadata = {'render_modes': ['human', 'rgb_array'], 'render_fps': 30}
@@ -184,8 +187,9 @@ class RacingEnv(gym.Env):
                 shape=(1,), dtype=np.float32
             ),
             'accel_lat': spaces.Box(-10, 10, shape=(1,), dtype=np.float32), # Approx lateral accel limits
-            'dist_to_centerline': spaces.Box(0, np.inf, shape=(1,), dtype=np.float32),
+            'dist_to_centerline': spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
             # Add definitions for other potential future obs
+            'dist_to_boundary': spaces.Box(-np.inf, self.track.half_width, shape=(1,), dtype=np.float32),
         }
 
         # Populate the dict based on configured components
@@ -241,17 +245,23 @@ class RacingEnv(gym.Env):
         """Get observation dictionary for all agents based on configured components."""
         observations = {}
         all_car_data = {agent_id: car.get_data() for agent_id, car in self.cars.items()}
-
+        
         for agent_id, car_data in all_car_data.items():
             obs_dict = {}
             for component in self.observation_components:
                 if component in car_data:
                     # Directly get from car data if available
-                    obs_dict[component] = np.array([car_data[component]], dtype=np.float32)
+                    obs_dict[component] = torch.tensor([car_data[component]], dtype=torch.float32, device=device)
                 elif component == 'dist_to_centerline':
                     # Calculate based on track and car position
                     dist = self.track.get_distance_to_centerline(car_data['x'], car_data['y'])
-                    obs_dict[component] = np.array([dist], dtype=np.float32)
+                    obs_dict[component] = torch.tensor([dist], dtype=torch.float32, device=device)
+                elif component == 'dist_to_boundary':
+                    # Calculate distance to centerline first
+                    dist_center = self.track.get_distance_to_centerline(car_data['x'], car_data['y'])
+                    # Distance to boundary is half_width - dist_center (can be negative if off-track)
+                    dist_boundary = self.track.half_width - abs(dist_center)
+                    obs_dict[component] = torch.tensor([dist_boundary], dtype=torch.float32, device=device)
                 # Add elif blocks here for other complex/derived observations
                 # elif component == 'lidar': 
                 #     obs_dict[component] = self._calculate_lidar(agent_id, all_car_data)
@@ -269,7 +279,7 @@ class RacingEnv(gym.Env):
         return {
             agent_id: {
                 'lap': car.lap_count,
-                'progress': car.progress,
+                'total_progress': car.total_progress,
                 'speed': car.v,
                 'collision': False,
                 'off_track': False,
@@ -309,13 +319,15 @@ class RacingEnv(gym.Env):
         rewards, terminations, truncations, infos = self._initialize_step()
         
         # Update car states
-        self._update_car_states(actions)
+        delta_progresses =  self._update_car_states(actions)
         
         # Check for collisions and off-track
         collided_agents, off_track_agents = self._check_collisions_and_track()
         
         # Calculate rewards and update termination conditions
-        self._calculate_rewards_and_terminations(collided_agents, off_track_agents, rewards, terminations, truncations, infos)
+        self._calculate_rewards_and_terminations(
+            collided_agents, off_track_agents, rewards, terminations, truncations, infos, delta_progresses
+        )
         
         observations = self._get_obs()
 
@@ -352,9 +364,14 @@ class RacingEnv(gym.Env):
 
     def _update_car_states(self, actions):
         """Update the state of all cars based on their actions."""
+        delta_progresses = {}
         for agent_id, car in self.cars.items():
             action = actions if self.mode == 'single' else actions[agent_id]
             car.update(action, self.dt)
+            delta_progress = self.track.calculate_progress(car.last_x, car.last_y, car.x, car.y)
+            car.total_progress += delta_progress
+            delta_progresses[agent_id] = delta_progress
+        return delta_progresses
 
     def _check_collisions_and_track(self):
         """Check for collisions between cars and off-track conditions."""
@@ -378,39 +395,73 @@ class RacingEnv(gym.Env):
 
         return collided_agents, off_track_agents
 
-    def _calculate_rewards_and_terminations(self, collided_agents, off_track_agents, rewards, terminations, truncations, infos):
+    def _calculate_rewards_and_terminations(self, collided_agents, off_track_agents, rewards, terminations, truncations, infos, delta_progresseses):
         """Calculate rewards and update termination conditions."""
-        progress_reward_factor = 0.1
-        collision_penalty = -100.0
-        off_track_penalty = -50.0
-        lap_bonus = 100.0
+        # Penalties for terminal states - should be significantly negative
+        collision_penalty = -10000.0 # Increased penalty (was -20.0)
+        off_track_penalty = -10000.0 # Added explicit penalty
+        wrong_direction_penalty = -10000.0 # Added penalty, potentially worse than off-track/collision
+        lap_bonus = 400.0          # Optional bonus for completing a lap
+
+        # --- Reward shaping parameters --- 
+        k_1 = 0.25   # Speed deviation
+        k_2 = 0.3   # Distance to centerline
+        k_3 = 1.0   # Being outside track width
+        k_4 = 50000.0 # Progress multiplier
+        car_cfg = self.config['car']
+        v_max = 0.75 * car_cfg.get('max_speed', 20.0)
+        w_r = self.track.half_width
 
         for agent_id, car in self.cars.items():
-            # Update lap count
+            # Update lap count info
             infos[agent_id]['lap'] = car.lap_count
-            reward = car.v * progress_reward_factor * self.dt
 
-            # Apply penalties
+            # --- Base Reward Calculation (Shaping) ---
+            v = car.v
+            d_center = self.track.get_distance_to_centerline(car.x, car.y)
+            d_prog = delta_progresseses.get(agent_id, 0.0) # Progress increment
+            
+            reward = (
+                - k_1 * abs(v - v_max)       # Penalty for speed deviation
+                - k_2 * abs(d_center)        # Penalty for centerline deviation
+                - k_3 * max(abs(d_center) - w_r, 0) # Additional Penalty for being outside track width
+                + k_4 * d_prog               # Reward for progress
+            )
+
+            # --- Penalties & Termination for Bad States --- 
+            
+            # Check direction
+            if not self.track.is_correct_direction(car.x, car.y, car.theta):
+                reward += wrong_direction_penalty
+                # terminations[agent_id] = True
+                infos[agent_id]['wrong_direction'] = True
+            else:
+                infos[agent_id]['wrong_direction'] = False
+
+            # Check collision
             if agent_id in collided_agents:
                 reward += collision_penalty
-                terminations[agent_id] = True
+                # terminations[agent_id] = True
                 infos[agent_id]['collision'] = True
+
+            # Check off-track
             if agent_id in off_track_agents:
                 reward += off_track_penalty
-                terminations[agent_id] = True
+                # terminations[agent_id] = True
                 infos[agent_id]['off_track'] = True
 
-            # Check lap completion
+            # --- Lap Completion Bonus --- 
             lap_completed = self.track.check_lap_completion(car.x, car.last_x, car.y)
             infos[agent_id]['lap_completed'] = lap_completed
             if lap_completed:
                 car.lap_count += 1
-                reward += lap_bonus
+                reward += lap_bonus # Add bonus for completing the lap
                 infos[agent_id]['lap'] = car.lap_count
 
+            # Store final reward for the step
             rewards[agent_id] = reward
 
-            # Check truncation
+            # Check truncation (max steps)
             if self.current_step >= self.max_steps:
                 truncations[agent_id] = True
 

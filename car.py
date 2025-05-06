@@ -43,8 +43,11 @@ class Car:
         self.accel_lat = 0.0 # Store actual lateral acceleration applied
         
         self.lap_count = 0
-        self.progress = 0.0
+
+        # Progress tracking
+        self.total_progress = 0.0
         self.last_x = 0.0
+        self.last_y = 0.0
         
         self.set_state(initial_state) # Initialize state variables properly
 
@@ -54,6 +57,8 @@ class Car:
         self.accel_lon = 0.0 # Reset accel on state set
         self.accel_lat = 0.0 # Reset accel on state set
         self.last_x = self.x # Ensure last_x is updated
+        self.last_y = self.y # Ensure last_y is updated
+        self.total_progress = 0.0 # Reset total progress
 
     def update(self, action, dt):
         throttle_brake_input, steer_input = action # Action is now [-1, 1] for throttle/brake
@@ -135,9 +140,11 @@ class Car:
         # Position update
         x_dot = self.v * np.cos(self.theta)
         y_dot = self.v * np.sin(self.theta)
+        self.last_x = self.x
+        self.last_y = self.y
         self.x += x_dot * dt
         self.y += y_dot * dt
-
+        
     def get_data(self):
         """Returns a dictionary containing the car's current state values."""
         return {
