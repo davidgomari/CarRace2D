@@ -199,7 +199,7 @@ def single_agent_training(config):
         
         # Access the car's final progress
         final_progress = env.cars['agent_0'].total_progress
-        print(f"Episode {episode+1:3d}: Total Reward = {total_reward:8.2f}, Avg Reward (Last 20) = {avg_reward_last_20:8.2f}, Final Progress = {final_progress:.4f}")
+        print(f"Episode {episode+1:3d}: Total Reward = {total_reward:8.2f}, Avg Reward (Last 20) = {avg_reward_last_20:8.2f}, Final Progress = {final_progress:.4f}, Last_Step = {step_idx}")
        
     
     # Save the model
@@ -209,32 +209,171 @@ def single_agent_training(config):
     print("Single agent training completed!")
 
 def multi_agent_training(config):
-    """Train multiple RL agents in a multi-agent environment."""
-    # Set up environment
+    """Train multiple RL agents in a multi-agent environment (simultaneously)."""
+    # Set training mode flag
+    config['training_mode'] = True
+
+    # Use training render mode and max_steps
+    training_render_mode = config.get('training', {}).get('render_mode', None)
+    original_sim_render_mode = config.get('simulation', {}).get('render_mode')
+    training_max_steps = config.get('training', {}).get('max_steps', 1000)
+    original_sim_max_steps = config.get('simulation', {}).get('max_steps')
+    if 'simulation' not in config: config['simulation'] = {}
+    config['simulation']['render_mode'] = training_render_mode
+    config['simulation']['max_steps'] = training_max_steps
+
+    print(f"Setting up multi-agent training environment with render_mode: {training_render_mode}, max_steps: {training_max_steps}")
     env, agents = setup_environment('multi', None, config)
-    
-    # Train each RL agent
+
+    # Restore original simulation render mode and max_steps
+    config['simulation']['render_mode'] = original_sim_render_mode
+    config['simulation']['max_steps'] = original_sim_max_steps
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Training on device: {device}")
+
+    rl_algo = config['training']['rl_algo']
+    resume_training = config['training']['resume_training']
+    num_episodes = config['training']['num_episodes']
+    max_steps = config['training']['max_steps']
+    discount_factor = config['training']['discount_factor']
+    save_frequency = config['training'].get('save_frequency', 100)
+    learning_rate = config['training']['learning_rate']
+
+    # Prepare RL agents, models, and optimizers
+    rl_agents = {}
+    optimizers = {}
     for agent_id, agent in agents.items():
         if isinstance(agent, RLAgent):
-            print(f"\nTraining agent {agent_id}...")
-            
-            # Create and train the model
-            # model = PPO(
-            #     "MlpPolicy",
-            #     env,
-            #     learning_rate=config['rl']['learning_rate'],
-            #     gamma=config['rl']['discount_factor'],
-            #     verbose=1
-            # )
+            # Determine obs_dim and action_dim for this agent
+            obs_space = env.observation_space[agent_id]
+            action_space = env.action_space[agent_id]
+            # Fix: If obs_space is a Dict, get the total dimension by summing the shapes of its components
+            if hasattr(obs_space, 'spaces') and isinstance(obs_space.spaces, dict):
+                obs_dim = sum(space.shape[0] for space in obs_space.spaces.values())
+            else:
+                obs_dim = obs_space.shape[0]
+            action_dim = action_space.shape[0]
+            model_path = config['agents'][agent_id]['model_path']
+
+            # Load or create model
             model = None
-            
-            # Train the model
-            num_episodes = config['training']['num_episodes']
-            total_timesteps = num_episodes * config['simulation']['max_steps']
-            model.learn(total_timesteps=total_timesteps)
-            
-            # Save the model
-            save_model(model, 'multi', agent_id)
-    
+            if resume_training and os.path.exists(model_path):
+                try:
+                    print(f"[{agent_id}] Attempting to resume training from {model_path}")
+                    if rl_algo == 'reinforce':
+                        model = ReinforcePolicy(obs_dim, action_dim)
+                        state_dict = torch.load(model_path, map_location=device)
+                        model.load_state_dict(state_dict)
+                        model.to(device)
+                        print(f"[{agent_id}] Successfully loaded model from {model_path} for resuming.")
+                    else:
+                        print(f"[{agent_id}] Warning: Resume logic not implemented for algo '{rl_algo}'. Starting fresh.")
+                except Exception as e:
+                    print(f"[{agent_id}] Warning: Failed to load model from {model_path}: {e}. Starting fresh.")
+                    model = None
+            if model is None:
+                print(f"[{agent_id}] Initializing a new {rl_algo} model for training.")
+                if rl_algo == 'reinforce':
+                    model = ReinforcePolicy(obs_dim, action_dim).to(device)
+                else:
+                    raise ValueError(f"Model creation not implemented for algorithm: {rl_algo}")
+            agent.model = model
+            rl_agents[agent_id] = agent
+            optimizers[agent_id] = Adam(agent.model.parameters(), lr=learning_rate)
+
+    from collections import deque
+    recent_rewards = {agent_id: deque(maxlen=20) for agent_id in rl_agents}
+
+    print(f"Starting multi-agent training with {num_episodes} episodes...")
+    for episode in range(num_episodes):
+        state, info = env.reset()
+        done = {agent_id: False for agent_id in rl_agents}
+        truncated = {agent_id: False for agent_id in rl_agents}
+        ep_rewards = {agent_id: [] for agent_id in rl_agents}
+        ep_log_probs = {agent_id: [] for agent_id in rl_agents}
+        total_rewards = {agent_id: 0 for agent_id in rl_agents}
+        step_idx = 0
+        quit_signal_received = False
+        metrics = initialize_metrics(agents)
+
+        while not all(done.values()):
+            # Handle Pygame Events (if any agent is human, env.render_mode will be 'human')
+            if env.render_mode == 'human':
+                running, state, metrics, step_idx = handle_pygame_events(env, state, metrics, step_idx)
+                if running == -1:
+                    print("Back button pressed. Saving models and stopping training.")
+                    for agent_id in rl_agents:
+                        save_model(rl_agents[agent_id].model, 'multi', agent_id)
+                    env.close()
+                    return
+                elif running == -2:
+                    continue
+                elif not running:
+                    print("Window closed. Stopping training.")
+                    env.close()
+                    return
+
+            # Get actions and log_probs for all RL agents
+            actions = {}
+            log_probs = {}
+            for agent_id, agent in rl_agents.items():
+                actions[agent_id], log_probs[agent_id] = agent.model.act(state[agent_id], episode)
+            # For non-RL agents, get actions as usual
+            for agent_id, agent in agents.items():
+                if agent_id not in rl_agents:
+                    actions[agent_id] = agent.get_action(state[agent_id])
+
+            # Step environment
+            next_state, rewards, dones, truncs, infos = env.step(actions)
+            for agent_id in rl_agents:
+                ep_rewards[agent_id].append(rewards[agent_id])
+                ep_log_probs[agent_id].append(log_probs[agent_id])
+                total_rewards[agent_id] += rewards[agent_id]
+                done[agent_id] = dones[agent_id] or truncs[agent_id]
+                # Check for quit signal
+                if infos[agent_id].get('quit_signal', False):
+                    print(f"[{agent_id}] Quit signal received, stopping training.")
+                    quit_signal_received = True
+            state = next_state
+            step_idx += 1
+            if quit_signal_received:
+                break
+            if step_idx >= max_steps:
+                for agent_id in done:
+                    done[agent_id] = True
+                break
+
+        if quit_signal_received:
+            break
+
+        # Update each RL agent's policy
+        for agent_id, agent in rl_agents.items():
+            returns = []
+            R = 0
+            for r in reversed(ep_rewards[agent_id]):
+                R = r + discount_factor * R
+                returns.insert(0, R)
+            returns = torch.tensor(returns, device=device)
+            returns = (returns - returns.mean()) / (returns.std() + 1e-9)
+            loss = 0
+            for log_prob, R in zip(ep_log_probs[agent_id], returns):
+                loss -= log_prob * R
+            optimizers[agent_id].zero_grad()
+            loss.backward()
+            optimizers[agent_id].step()
+            recent_rewards[agent_id].append(total_rewards[agent_id])
+            avg_reward_last_20 = sum(recent_rewards[agent_id]) / len(recent_rewards[agent_id])
+            final_progress = env.cars[agent_id].total_progress
+            print(f"[Ep {episode+1:3d}] {agent_id}: Total Reward = {total_rewards[agent_id]:8.2f}, Avg(20) = {avg_reward_last_20:8.2f}, Final Progress = {final_progress:.4f}, Last_Step = {step_idx}")
+
+        # Save models periodically
+        if (episode + 1) % save_frequency == 0:
+            for agent_id in rl_agents:
+                save_model(rl_agents[agent_id].model, 'multi', agent_id)
+
+    # Save all models at the end
+    for agent_id in rl_agents:
+        save_model(rl_agents[agent_id].model, 'multi', agent_id)
     env.close()
     print("Multi-agent training completed!") 

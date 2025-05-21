@@ -4,8 +4,7 @@ from gymnasium import spaces
 import numpy as np
 import torch
 import pygame # For rendering and human input
-import yaml
-import os # Added import os
+import math
 
 from track import OvalTrack
 from car import Car
@@ -49,6 +48,12 @@ class RacingEnv(gym.Env):
         env_cfg = self.config.get('environment', {})
         self.observation_components = env_cfg.get('observation_components', ['x', 'y', 'v', 'theta'])
         print(f"Using observation components: {self.observation_components}")
+
+        # LiDAR configuration
+        car_cfg = self.config.get('car', {})
+        self.lidar_num_beams = car_cfg.get('lidar_num_beams', 32)
+        self.lidar_max_range = car_cfg.get('lidar_max_range', 50.0)
+        self.lidar_eps = float(car_cfg.get('lidar_eps', 1e-3))
 
     def _setup_track(self):
         """Initialize the racing track."""
@@ -190,6 +195,7 @@ class RacingEnv(gym.Env):
             'dist_to_centerline': spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
             # Add definitions for other potential future obs
             'dist_to_boundary': spaces.Box(-np.inf, self.track.half_width, shape=(1,), dtype=np.float32),
+            'lidar': spaces.Box(0, self.lidar_max_range, shape=(self.lidar_num_beams,), dtype=np.float32),
         }
 
         # Populate the dict based on configured components
@@ -241,6 +247,35 @@ class RacingEnv(gym.Env):
     def observation_space(self, value):
         self._observation_space = value
 
+    def _calculate_lidar(self, agent_id, all_car_data):
+        num_beams = self.lidar_num_beams
+        max_range = self.lidar_max_range
+        eps = self.lidar_eps
+        x0, y0, theta = all_car_data[agent_id]['x'], all_car_data[agent_id]['y'], all_car_data[agent_id]['theta']
+        lidar_distances = np.full(num_beams, max_range, dtype=np.float32)
+        angles = theta + np.linspace(-np.pi, np.pi, num_beams, endpoint=False)
+        for i, ang in enumerate(angles):
+            for r in np.linspace(0, max_range, 200):
+                x = x0 + r * np.cos(ang)
+                y = y0 + r * np.sin(ang)
+                # Check collision with track boundary
+                if not self.track.is_on_track(x, y):
+                    lidar_distances[i] = r
+                    break
+                # Check collision with other cars (except self)
+                for other_id, other_car in self.cars.items():
+                    if other_id == agent_id:
+                        continue
+                    dx = x - other_car.x
+                    dy = y - other_car.y
+                    dist = np.sqrt(dx*dx + dy*dy)
+                    if dist < float(other_car.collision_radius) + eps:
+                        lidar_distances[i] = r
+                        break
+                if lidar_distances[i] < r:
+                    break
+        return torch.tensor(lidar_distances, dtype=torch.float32, device=device)
+
     def _get_obs(self):
         """Get observation dictionary for all agents based on configured components."""
         observations = {}
@@ -263,8 +298,8 @@ class RacingEnv(gym.Env):
                     dist_boundary = self.track.half_width - abs(dist_center)
                     obs_dict[component] = torch.tensor([dist_boundary], dtype=torch.float32, device=device)
                 # Add elif blocks here for other complex/derived observations
-                # elif component == 'lidar': 
-                #     obs_dict[component] = self._calculate_lidar(agent_id, all_car_data)
+                elif component == 'lidar': 
+                    obs_dict[component] = self._calculate_lidar(agent_id, all_car_data)
                 else:
                     # This shouldn't happen if _setup_spaces is correct, but good failsafe
                     print(f"Warning: Cannot get observation component '{component}' for agent {agent_id}.")
@@ -396,72 +431,86 @@ class RacingEnv(gym.Env):
         return collided_agents, off_track_agents
 
     def _calculate_rewards_and_terminations(self, collided_agents, off_track_agents, rewards, terminations, truncations, infos, delta_progresseses):
-        """Calculate rewards and update termination conditions."""
-        # Penalties for terminal states - should be significantly negative
-        collision_penalty = -10000.0 # Increased penalty (was -20.0)
-        off_track_penalty = -10000.0 # Added explicit penalty
-        wrong_direction_penalty = -10000.0 # Added penalty, potentially worse than off-track/collision
-        lap_bonus = 400.0          # Optional bonus for completing a lap
+        """Calculate rewards and update termination conditions with improved scaling and shaping for long episodes."""
+        # Scale base metrics by lap_bonus so shaping sums to ~one lap's value
+        lap_bonus = 400.0
+        # Terminal penalties set to one lap penalty
+        collision_penalty = -lap_bonus
+        off_track_penalty = -lap_bonus
+        wrong_direction_penalty = -lap_bonus
 
-        # --- Reward shaping parameters --- 
-        k_1 = 0.25   # Speed deviation
-        k_2 = 0.3   # Distance to centerline
-        k_3 = 1.0   # Being outside track width
-        k_4 = 50000.0 # Progress multiplier
+        # Intermediate milestone every 10% of lap gives fraction of lap_bonus
+        milestone_bonus = lap_bonus * 0.1  # 40
+        milestones = set(range(1, 10))      # 10%,20%,...,90%
+
+        # Shaping weights
+        k_v = 0.25     # speed deviation weight
+        k_c = 0.3      # centerline deviation weight
+        k_o = 1.0      # outside-track weight
+        # Progress multiplier equals lap_bonus so sum of progress ~ lap_bonus per lap
+        k_p = lap_bonus
+
         car_cfg = self.config['car']
         v_max = 0.75 * car_cfg.get('max_speed', 20.0)
         w_r = self.track.half_width
+        max_center_dev = 2 * w_r
 
         for agent_id, car in self.cars.items():
-            # Update lap count info
             infos[agent_id]['lap'] = car.lap_count
 
-            # --- Base Reward Calculation (Shaping) ---
+            # Basic shaping
             v = car.v
-            d_center = self.track.get_distance_to_centerline(car.x, car.y)
-            d_prog = delta_progresseses.get(agent_id, 0.0) # Progress increment
-            
+            raw_d_center = self.track.get_distance_to_centerline(car.x, car.y)
+            d_center = max(min(raw_d_center, max_center_dev), -max_center_dev)
+            outside_dev = max(abs(d_center) - w_r, 0.0)
+            d_prog = delta_progresseses.get(agent_id, 0.0)
+
             reward = (
-                - k_1 * abs(v - v_max)       # Penalty for speed deviation
-                - k_2 * abs(d_center)        # Penalty for centerline deviation
-                - k_3 * max(abs(d_center) - w_r, 0) # Additional Penalty for being outside track width
-                + k_4 * d_prog               # Reward for progress
+                - k_v * abs(v - v_max)
+                - k_c * abs(d_center)
+                - k_o * outside_dev
+                + k_p * d_prog
             )
 
-            # --- Penalties & Termination for Bad States --- 
-            
-            # Check direction
+            # Milestone bonus based on fractional part of total_progress
+            total_prog = infos[agent_id].get('total_progress', 0.0)
+            frac_prog = total_prog - math.floor(total_prog)  # handles >1 correctly
+            ms_index = int(frac_prog * 10)
+            last_ms = infos[agent_id].get('last_milestone', 0)
+            if ms_index in milestones and ms_index > last_ms:
+                reward += milestone_bonus
+                infos[agent_id]['last_milestone'] = ms_index
+
+            # Termination checks
             if not self.track.is_correct_direction(car.x, car.y, car.theta):
                 reward += wrong_direction_penalty
-                # terminations[agent_id] = True
                 infos[agent_id]['wrong_direction'] = True
+                terminations[agent_id] = True
             else:
                 infos[agent_id]['wrong_direction'] = False
 
-            # Check collision
             if agent_id in collided_agents:
                 reward += collision_penalty
-                # terminations[agent_id] = True
                 infos[agent_id]['collision'] = True
+                terminations[agent_id] = True
 
-            # Check off-track
             if agent_id in off_track_agents:
                 reward += off_track_penalty
-                # terminations[agent_id] = True
                 infos[agent_id]['off_track'] = True
+                terminations[agent_id] = True
 
-            # --- Lap Completion Bonus --- 
-            lap_completed = self.track.check_lap_completion(car.x, car.last_x, car.y)
-            infos[agent_id]['lap_completed'] = lap_completed
-            if lap_completed:
+            # Lap completion
+            if self.track.check_lap_completion(car.x, car.last_x, car.y):
                 car.lap_count += 1
-                reward += lap_bonus # Add bonus for completing the lap
+                reward += lap_bonus
                 infos[agent_id]['lap'] = car.lap_count
+                # reset milestone counter for new lap
+                infos[agent_id]['last_milestone'] = 0
 
-            # Store final reward for the step
+            # Assign
             rewards[agent_id] = reward
 
-            # Check truncation (max steps)
+            # Truncation
             if self.current_step >= self.max_steps:
                 truncations[agent_id] = True
 

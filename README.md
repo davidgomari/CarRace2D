@@ -11,6 +11,7 @@ A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It 
 *   **Modular Structure:** Code is organized into modules for UI, environment, track, car, agents, etc.
 *   **Basic Physics:** Implements a kinematic bicycle model with considerations for engine/brake forces, drag, and rolling resistance.
 *   **Training Support:** Built-in training functionality for RL agents with configurable parameters and visualization options.
+*   **Multi-Agent RL Training:** Supports simultaneous training of multiple RL agents in a shared environment, with separate models and optimizers for each agent.
 *   **UI Controls:** Interactive controls during simulation and training (Back, Reset, Pause/Resume).
 *   **Customizable UI Sidebar:** Configure which agent/car properties are displayed in the sidebar via the config file.
 *   **Flexible Observations:** Easily add new observation components (e.g., acceleration) to the environment and UI.
@@ -92,6 +93,10 @@ During both simulation and training, the following buttons are available:
 
 To resume training from a previous model, set `resume_training: True` in your config file. Models are saved automatically during training.
 
+**Multi-Agent Training:**
+
+You can train multiple RL agents simultaneously in multi-agent mode. Each RL agent will have its own model and optimizer, and training progress is tracked individually. Configure multi-agent training in `config.yaml` and select "Multi Agent Training" from the main menu.
+
 ## Documentation
 
 <div align="center">
@@ -132,7 +137,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Planned features and improvements:
 
-* [ ] Multi-agent RL training support
+* [OK] Multi-agent RL training support
 * [ ] Additional RL algorithms (PPO, TD3, SAC)
 * [ ] Custom track editor
 * [ ] Replay system for saving and loading races

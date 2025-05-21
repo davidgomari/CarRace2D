@@ -20,9 +20,9 @@ Here's a simple example of running a single-agent simulation with a human-contro
    - Up/Down: Throttle/Brake
    - Left/Right: Steering
 
-### First Training Run
+### First Training Run (Single Agent)
 
-To train a basic RL agent:
+To train a basic RL agent in single-agent mode:
 
 1. Configure training parameters in `config_single_agent.yaml`
 2. Launch the application
@@ -31,12 +31,23 @@ To train a basic RL agent:
 5. Start training and monitor progress
 6. Use the UI controls to manage the training process
 
+### Multi-Agent Training
+
+To train multiple RL agents simultaneously:
+
+1. Configure agent and training parameters in `config.yaml` (see the Configuration section below)
+2. Launch the application
+3. Select "Training" mode
+4. Choose "Multi Agent Training" from the menu
+5. Training will proceed with each RL agent having its own model and optimizer
+6. Use the UI controls to manage the training process
+
 ## Notes
 
 *   The Reinforcement Learning implementation now supports model loading and inference, with a configurable algorithm selection.
 *   The car physics model is a simplified kinematic bicycle model with added force dynamics. It may not perfectly reflect real-world vehicle behavior.
 *   The UI now includes interactive controls (Back, Reset, Pause/Resume) that work during both simulation and training.
-*   Multi-agent RL training is not yet implemented. The multi-agent training function is a placeholder for future development.
+*   Multi-agent RL training is now fully supported. You can train multiple RL agents simultaneously in a shared environment, each with its own model and optimizer.
 
 ## Project Structure
 
@@ -295,7 +306,7 @@ Remember to test thoroughly after making any modifications, as changes to one co
 
 The simulation behavior is primarily controlled through two YAML configuration files:
 
-*   `config.yaml`: Used for multi-agent simulations and training.
+*   `config.yaml`: Used for multi-agent simulations and training (including multi-agent RL training).
 *   `config_single_agent.yaml`: Used for single-agent simulations and training. It also contains the `agent_config` section detailing parameters for different agent types when run in single mode.
 
 ### Configuration Details
@@ -352,7 +363,7 @@ training:
 *   **rl_algo:** The RL algorithm to use ('reinforce' by default).
 *   **resume_training:** If True, training resumes from the last saved model (if available). Models are saved automatically during training.
 
-> **Note:** For faster training, set `render_mode` to `None` in the training configuration. This will run the training without GUI visualization, which is significantly faster. Use `render_mode: 'human'` when you want to monitor the training progress visually.
+> **Note:** For multi-agent RL training, use `config.yaml` and define each agent under the `agents` section. Each RL agent will have its own model and training progress. For faster training, set `render_mode` to `None` in the training configuration. This will run the training without GUI visualization, which is significantly faster. Use `render_mode: 'human'` when you want to monitor the training progress visually.
 
 #### Track Parameters
 
@@ -561,7 +572,6 @@ A: Create a new agent class inheriting from `BaseAgent` and implement the requir
    - Some physics parameters may need tuning for specific scenarios
 
 2. **RL Training:**
-   - Multi-agent RL training is not yet implemented
    - Some RL algorithms may require additional hyperparameter tuning
    - Training stability can vary with different configurations
 
@@ -571,6 +581,9 @@ A: Create a new agent class inheriting from `BaseAgent` and implement the requir
    - Limited support for custom visualizations
 
 ## Changelog
+
+### Version 2.2
+- Multi-agent RL training support
 
 ### Version 2.1
 - Resume training from saved models (`resume_training` option).

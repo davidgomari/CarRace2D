@@ -2,18 +2,23 @@
 simulation:
   dt: 0.1              # Simulation time step (seconds)
   num_episodes: 2      # Number of episodes to run
-  max_steps: 1000      # Max steps per episode
+  max_steps: 10000      # Max steps per episode
   mode: 'multi'        # 'single' or 'multi'
-  num_agents: 3
+  num_agents: 2
   render_mode: 'human' # 'human', 'rgb_array', or None
   render_fps: 60
 
 # Training Parameters
 training:
-  num_episodes: 1000   # Number of training episodes
-  save_frequency: 100  # Save model every N episodes
-  render_mode: None    # Usually None during training for speed
-  render_fps: 30
+  num_episodes: 1000     # Number of training episodes
+  max_steps: 5000       # Max steps per episode
+  render_mode: None # 'human', 'rgb_array', or None (Usually None during training)
+  render_fps: 5        # Frames per second for rendering (if render_mode is 'human')
+  save_frequency: 10   # Save model every N episodes
+  resume_training: False # if True, we load latest model from the model_path and then start the training
+  learning_rate: 0.01 # Learning rate for the optimizer
+  discount_factor: 0.9 # Discount factor for the optimizer
+  rl_algo: 'reinforce'   # 'ppo', 'td3', 'sac', 'reinforce'
 
 # Track Parameters (Example for Oval)
 track:
@@ -33,6 +38,7 @@ environment:
     - 'steer_angle'
     - 'accel'
     - 'dist_to_centerline'
+    - 'lidar'
 
 # Car Parameters
 car:
@@ -54,20 +60,23 @@ car:
   max_engine_force: 4500   # Max forward force from engine (N)
   max_brake_force: 6000    # Max backward force from brakes (N)
   gravity: 9.81          # Acceleration due to gravity (m/s^2)
-  # ------------------------------------ 
+  # ------------------------------------
+
+  # Car LiDAR sensor
+  lidar_num_beams: 32
+  lidar_max_range: 50.0
+  lidar_eps: 1e-3
 
 # Agent Configuration (Example for 3 agents)
 agents:
   agent_0:
     type: 'rl'           # rl, mpc, human, random
-    model_path: 'models/agent0_policy.zip' # Path for RL model
+    model_path: 'models/multi_agent/agent_0_model.zip' # Path for RL model
     start_pos_idx: 0     # Index for starting position
   agent_1:
-    type: 'human'
-    start_pos_idx: 1
-  agent_2:
-    type: 'random'
-    start_pos_idx: 2
+    type: 'rl'           # rl, mpc, human, random
+    model_path: 'models/multi_agent/agent_1_model.zip' # Path for RL model
+    start_pos_idx: 1     # Index for starting position
 
 
 # RL Hyperparameters (Example - adjust based on library/algo)
