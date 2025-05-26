@@ -32,16 +32,28 @@ def setup_environment(mode, agent_type, config):
     
     # Determine if we're in training mode
     is_training = config.get('training_mode', False)  # Default to simulation mode
-    
+
+    # --- Unify MPC agent config for all agents (single or multi) ---
+    for agent_id, agent_cfg in config.get('agents', {}).items():
+        a_type = agent_cfg.get('type')
+        if a_type == 'mpc':
+            # Use agent_config['mpc'] as base, then overlay agent-specific overrides
+            merged = dict(config.get('agent_config', {}).get('mpc', {}))
+            merged.update(agent_cfg)  # agent-specific overrides take precedence
+            config['agents'][agent_id] = merged
+        elif a_type == 'rl':
+            agent_cfg['training_mode'] = is_training
+
     if mode == 'single':
         print(f"Running single-agent {'training' if is_training else 'simulation'}, requested type: {agent_type}")
         # Update the config for the single agent based on the chosen type
         if agent_type in config.get('agent_config', {}):
             # Set the agent type in the main 'agents' section
             config['agents']['agent_0']['type'] = agent_type
-            # Merge specific parameters from 'agent_config' into 'agent_0'
-            agent_specific_config = config['agent_config'][agent_type]
-            config['agents']['agent_0'].update(agent_specific_config)
+            # For non-MPC types, merge agent_config[agent_type] (MPC already handled above)
+            if agent_type != 'mpc':
+                agent_specific_config = config['agent_config'][agent_type]
+                config['agents']['agent_0'].update(agent_specific_config)
             # Set training_mode based on whether we're in training
             if agent_type == 'rl':
                 config['agents']['agent_0']['training_mode'] = is_training
@@ -51,12 +63,6 @@ def setup_environment(mode, agent_type, config):
             print("Proceeding with default agent_0 config (if any) or environment defaults.")
             # Ensure 'type' is set even if config is missing, env might handle it
             config['agents']['agent_0']['type'] = agent_type 
-
-    # For multi-agent mode, set training_mode for all RL agents
-    else:
-        for agent_id, agent_config in config.get('agents', {}).items():
-            if agent_config.get('type') == 'rl':
-                agent_config['training_mode'] = is_training
 
     # Determine if any agent requires human render mode
     is_human_controlled = False

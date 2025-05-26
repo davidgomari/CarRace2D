@@ -67,15 +67,39 @@ car:
   lidar_max_range: 50.0
   lidar_eps: 1e-3
 
+# Agent Configuration Details
+# The simulation script will select the config based on the chosen agent type
+agent_config:
+  human:
+    # No specific params needed currently
+    description: "Controlled by user via keyboard arrow keys."
+  random:
+    description: "Takes random actions within the action space."
+  mpc:
+    # type: 'mpc' # Type is already known from simulation.agent_type
+    description: "Model Predictive Control agent with path tracking."
+    horizon: 5      # N - Prediction horizon
+    # MPC Cost Function Weights (example values, TUNE THESE!)
+    Q_pos: 1.0       # Penalty for deviation from reference path x,y
+    Q_head: 5.0       # Penalty for heading error
+    Q_vel: 5.0        # Penalty for velocity error from reference
+    R_accel: 0.5      # Penalty for large acceleration commands
+    R_steer_cmd: 0.2  # Penalty for large target steering commands
+    R_steer_rate: 0.05 # Penalty for rate of change of target steering commands
+    # MPC Model/Constraint Parameters
+    mpc_max_accel: 3.0  # Max acceleration MPC will command (m/s^2)
+    mpc_min_accel: -5.0 # Max deceleration MPC will command (m/s^2)
+    max_steer_rate_sim: 3.14 # rad/s, how fast steer_angle_vehicle changes towards target_steer_cmd in MPC model
+
+
 # Agent Configuration (Example for 3 agents)
 agents:
   agent_0:
     type: 'rl'           # rl, mpc, human, random
-    model_path: 'models/multi_agent/agent_0_model.zip' # Path for RL model
+    model_path: 'models/multi_agent/agent_1_model.zip' # Path for RL model
     start_pos_idx: 0     # Index for starting position
   agent_1:
-    type: 'rl'           # rl, mpc, human, random
-    model_path: 'models/multi_agent/agent_1_model.zip' # Path for RL model
+    type: 'mpc'           # rl, mpc, human, random
     start_pos_idx: 1     # Index for starting position
 
 

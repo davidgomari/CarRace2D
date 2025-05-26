@@ -25,7 +25,18 @@ class RacingEnv(gym.Env):
         self.mode = mode
         self._load_config(config)
         self._setup_track()
-        self._setup_spaces()
+        self._setup_spaces() # Call before _setup_agents_and_cars if they need spaces
+        
+        # Pre-calculate centerline points for projection if track is OvalTrack
+        self._discretized_centerline_cache = []
+        self._centerline_projection_segments = 200 # Number of points to discretize centerline for projection
+        if isinstance(self.track, OvalTrack):
+            total_s = self.track.centerline_length
+            for i in range(self._centerline_projection_segments):
+                s = (i / self._centerline_projection_segments) * total_s
+                x, y, theta = self._get_oval_centerline_point(s)
+                self._discretized_centerline_cache.append({'s': s, 'x': x, 'y': y, 'theta': theta})
+
         self._setup_agents_and_cars()
         self.quit_requested = False # Flag to signal user quit
         
@@ -42,18 +53,22 @@ class RacingEnv(gym.Env):
         self.max_steps = sim_cfg['max_steps']
         self.render_mode = sim_cfg['render_mode']
         self.current_step = 0
-        self.num_agents = sim_cfg['num_agents']
+        self.num_agents = sim_cfg['num_agents'] # Will be adjusted in _setup_agents_and_cars for single mode
 
         # Load observation components config
         env_cfg = self.config.get('environment', {})
         self.observation_components = env_cfg.get('observation_components', ['x', 'y', 'v', 'theta'])
-        print(f"Using observation components: {self.observation_components}")
+        print(f"RL Agent observation components: {self.observation_components}")
 
         # LiDAR configuration
         car_cfg = self.config.get('car', {})
         self.lidar_num_beams = car_cfg.get('lidar_num_beams', 32)
         self.lidar_max_range = car_cfg.get('lidar_max_range', 50.0)
         self.lidar_eps = float(car_cfg.get('lidar_eps', 1e-3))
+        
+        # Default target speed for MPC reference path (as a percentage of max_speed)
+        self.mpc_ref_path_target_speed_factor = self.config.get('environment', {}).get('mpc_ref_path_target_speed_factor', 0.75)
+
 
     def _setup_track(self):
         """Initialize the racing track."""
@@ -66,6 +81,154 @@ class RacingEnv(gym.Env):
         # Add track parameters to car config for lap checking
         self.config['car']['track_half_width'] = self.track.half_width
         self.config['car']['track_radius'] = self.track.radius
+
+    # --- Helper methods for Oval Track Centerline and MPC Reference Path ---
+    def _get_oval_centerline_point(self, s_raw):
+        """
+        Calculates the (x, y, theta) coordinates and tangent angle 
+        on the oval track's centerline for a given arc length s_raw.
+        Assumes s=0 starts at the beginning of the first straight segment.
+        """
+        L = self.track.length
+        R = self.track.radius
+        total_length = self.track.centerline_length
+        s = s_raw % total_length # Ensure s is within [0, total_length)
+
+        # Define critical points (arc lengths at segment transitions)
+        s_bottom_straight_end = L
+        s_right_curve_end = L + np.pi * R
+        s_top_straight_end = L + np.pi * R + L
+        # s_left_curve_end = total_length
+
+        if 0 <= s < s_bottom_straight_end: # Bottom straight
+            prog_in_seg = s
+            x = -L/2 + prog_in_seg
+            y = -R
+            theta = 0.0
+        elif s_bottom_straight_end <= s < s_right_curve_end: # Right curve
+            prog_in_seg = s - s_bottom_straight_end
+            angle_in_curve = prog_in_seg / R 
+            # Curve starts at (-pi/2) relative to curve center's +x axis
+            current_angle_on_circle = -np.pi/2 + angle_in_curve 
+            x = self.track.curve1_center_x + R * np.cos(current_angle_on_circle)
+            y = self.track.curve1_center_y + R * np.sin(current_angle_on_circle)
+            theta = current_angle_on_circle + np.pi/2
+        elif s_right_curve_end <= s < s_top_straight_end: # Top straight
+            prog_in_seg = s - s_right_curve_end
+            x = L/2 - prog_in_seg
+            y = R
+            theta = np.pi
+        else: # Left curve (s_top_straight_end <= s < total_length)
+            prog_in_seg = s - s_top_straight_end
+            angle_in_curve = prog_in_seg / R
+            # Curve starts at (pi/2) relative to curve center's +x axis
+            current_angle_on_circle = np.pi/2 + angle_in_curve
+            x = self.track.curve2_center_x + R * np.cos(current_angle_on_circle)
+            y = self.track.curve2_center_y + R * np.sin(current_angle_on_circle)
+            theta = current_angle_on_circle + np.pi/2
+
+        theta = (theta + np.pi) % (2 * np.pi) - np.pi # Normalize theta to [-pi, pi]
+        return x, y, theta
+
+    def _project_to_oval_centerline(self, car_x, car_y):
+        """
+        Projects the car's (x,y) position to the closest point on the pre-calculated
+        discretized centerline.
+        Returns: (s_proj, x_proj, y_proj, theta_proj, signed_dist_to_centerline)
+        """
+        if not self._discretized_centerline_cache:
+            # Fallback if cache is not populated (should not happen with OvalTrack)
+            # This would be a crude projection, ideally log an error or handle better
+            print("Warning: Centerline cache not populated for projection.")
+            # A very rough estimate if needed: use track's own dist_to_centerline if it provided more
+            # For now, return a default that indicates failure to project properly
+            return 0.0, car_x, car_y, 0.0, self.track.get_distance_to_centerline(car_x, car_y)
+
+
+        min_dist_sq = float('inf')
+        closest_point_info = None
+
+        for point_info in self._discretized_centerline_cache:
+            dist_sq = (car_x - point_info['x'])**2 + (car_y - point_info['y'])**2
+            if dist_sq < min_dist_sq:
+                min_dist_sq = dist_sq
+                closest_point_info = point_info
+        
+        s_proj = closest_point_info['s']
+        x_proj = closest_point_info['x']
+        y_proj = closest_point_info['y']
+        theta_proj = closest_point_info['theta']
+
+        # Calculate signed distance
+        # Vector from projected centerline point to car
+        vec_proj_to_car_x = car_x - x_proj
+        vec_proj_to_car_y = car_y - y_proj
+        # Left normal vector of the centerline tangent
+        normal_x = -np.sin(theta_proj)
+        normal_y = np.cos(theta_proj)
+        # Dot product gives signed distance (positive if car is to the left of centerline)
+        signed_dist = vec_proj_to_car_x * normal_x + vec_proj_to_car_y * normal_y
+        
+        return s_proj, x_proj, y_proj, theta_proj, signed_dist
+
+    def get_curvature_at_s(self, s_raw):
+        """Approximates centerline curvature at arc length s_raw."""
+        ds = 0.5  # Slightly larger ds for stability in theta calculation
+        # Ensure s_raw is not at the very start or end if using ds/2 offsets without wrapping s
+        total_len = self.track.centerline_length
+        s1 = (s_raw - ds / 2 + total_len) % total_len # Handle wrapping
+        s2 = (s_raw + ds / 2) % total_len
+
+        _, _, theta1 = self._get_oval_centerline_point(s1)
+        _, _, theta2 = self._get_oval_centerline_point(s2)
+
+        dtheta = theta2 - theta1
+        # Normalize angle difference to [-pi, pi]
+        dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
+
+        curvature = dtheta / ds if abs(ds) > 1e-6 else 0.0
+        return curvature
+
+    def _generate_reference_path(self, s_current, current_car_speed, mpc_agent, car_config):
+        N = mpc_agent.N
+        dt_mpc = mpc_agent.dt
+        reference_path = np.zeros((N, 4))
+        max_speed_car = car_config.get('max_speed', 20.0)
+
+        # Original target speed factor
+        base_target_v_ref = max_speed_car * self.mpc_ref_path_target_speed_factor
+
+        # Max lateral acceleration for reference speed calculation (e.g., 70% of tire friction limit)
+        # Use car_config directly as it's passed in
+        max_lat_accel_for_ref_speed = car_config.get('coeff_friction', 1.1) * \
+                                    car_config.get('gravity', 9.81) * \
+                                    0.7  # Safety factor for reference speed
+
+        current_s_on_path = s_current
+        for k in range(N):
+            # Predict s for the next point on the reference path
+            # Using a blend of current speed and a moderate lookahead speed for s progression
+            # to prevent excessive lookahead if current_car_speed is very high.
+            lookahead_speed_for_s = min(current_car_speed, base_target_v_ref * 1.2) # Cap lookahead advance speed
+            lookahead_dist_increment = lookahead_speed_for_s * dt_mpc
+            current_s_on_path += lookahead_dist_increment
+
+            x_ref, y_ref, theta_ref = self._get_oval_centerline_point(current_s_on_path)
+
+            curvature_val = abs(self.get_curvature_at_s(current_s_on_path))
+
+            v_ref_curvature_limit = max_speed_car
+            if curvature_val > 1e-4: # Avoid division by zero or extreme speeds on straights
+                v_ref_curvature_limit = np.sqrt(max_lat_accel_for_ref_speed / curvature_val)
+
+            # Effective reference speed for this point
+            final_v_ref = min(base_target_v_ref, v_ref_curvature_limit)
+            final_v_ref = max(final_v_ref, 1.0) # Ensure a minimum positive speed
+
+            reference_path[k, :] = [x_ref, y_ref, theta_ref, final_v_ref]
+
+        return reference_path
+    # --- End of MPC Helper Methods ---
 
     def _setup_agents_and_cars(self):
         """Initialize agents and their corresponding cars."""
@@ -140,12 +303,13 @@ class RacingEnv(gym.Env):
             # Pass the whole agent_info dict, RL agent can extract what it needs
             self.agents[agent_id] = RLAgent(agent_id, agent_info)
         elif agent_type == 'mpc':
-            # MPC agent expects specific nested params
-            mpc_params = agent_info # Top-level params like horizon are directly in agent_info now
-            mpc_params['dt'] = self.dt # Inject dt
-            car_cfg = self.config.get('car', {})
-            track_cfg = self.config.get('track', {})
-            self.agents[agent_id] = MPCAgent(agent_id, mpc_params, car_cfg, track_cfg)
+            mpc_specific_params = agent_info # agent_info itself contains horizon, Q_pos etc.
+            mpc_specific_params['dt'] = self.dt # Inject dt
+            car_cfg_for_mpc = self.config.get('car', {})
+            track_cfg_for_mpc = self.config.get('track', {})
+            # Ensure all necessary mpc params for the new MPCAgent are in mpc_specific_params
+            # (e.g. Q_pos, Q_head etc. should be in config under agent_X for MPC)
+            self.agents[agent_id] = MPCAgent(agent_id, mpc_specific_params, car_cfg_for_mpc, track_cfg_for_mpc)
         elif agent_type == 'random':
             # Pass the specific action space for this agent, not the whole dict
             if self.mode == 'single':
@@ -185,16 +349,14 @@ class RacingEnv(gym.Env):
             'v': spaces.Box(0, car_cfg.get('max_speed', np.inf), shape=(1,), dtype=np.float32),
             'theta': spaces.Box(-np.pi, np.pi, shape=(1,), dtype=np.float32),
             'steer_angle': spaces.Box(-car_cfg['max_steer_angle'], car_cfg['max_steer_angle'], shape=(1,), dtype=np.float32),
-            # Use actual forces for accel bounds if available, else legacy
             'accel': spaces.Box(
                 -car_cfg.get('max_brake_force', 5000) / car_cfg.get('mass', 1500), 
                 car_cfg.get('max_engine_force', 4500) / car_cfg.get('mass', 1500), 
                 shape=(1,), dtype=np.float32
             ),
-            'accel_lat': spaces.Box(-10, 10, shape=(1,), dtype=np.float32), # Approx lateral accel limits
-            'dist_to_centerline': spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
-            # Add definitions for other potential future obs
-            'dist_to_boundary': spaces.Box(-np.inf, self.track.half_width, shape=(1,), dtype=np.float32),
+            'accel_lat': spaces.Box(-20, 20, shape=(1,), dtype=np.float32), # Approx lateral accel limits
+            'dist_to_centerline': spaces.Box(-self.track.width, self.track.width, shape=(1,), dtype=np.float32),
+            'dist_to_boundary': spaces.Box(-self.track.half_width, self.track.half_width, shape=(1,), dtype=np.float32),
             'lidar': spaces.Box(0, self.lidar_max_range, shape=(self.lidar_num_beams,), dtype=np.float32),
         }
 
@@ -255,7 +417,7 @@ class RacingEnv(gym.Env):
         lidar_distances = np.full(num_beams, max_range, dtype=np.float32)
         angles = theta + np.linspace(-np.pi, np.pi, num_beams, endpoint=False)
         for i, ang in enumerate(angles):
-            for r in np.linspace(0, max_range, 200):
+            for r in np.linspace(0, max_range, int(max_range / 100)): # Check every 0.5m for example
                 x = x0 + r * np.cos(ang)
                 y = y0 + r * np.sin(ang)
                 # Check collision with track boundary
@@ -282,28 +444,62 @@ class RacingEnv(gym.Env):
         all_car_data = {agent_id: car.get_data() for agent_id, car in self.cars.items()}
         
         for agent_id, car_data in all_car_data.items():
+            agent_instance = self.agents[agent_id]
             obs_dict = {}
-            for component in self.observation_components:
-                if component in car_data:
-                    # Directly get from car data if available
-                    obs_dict[component] = torch.tensor([car_data[component]], dtype=torch.float32, device=device)
-                elif component == 'dist_to_centerline':
-                    # Calculate based on track and car position
-                    dist = self.track.get_distance_to_centerline(car_data['x'], car_data['y'])
-                    obs_dict[component] = torch.tensor([dist], dtype=torch.float32, device=device)
-                elif component == 'dist_to_boundary':
-                    # Calculate distance to centerline first
-                    dist_center = self.track.get_distance_to_centerline(car_data['x'], car_data['y'])
-                    # Distance to boundary is half_width - dist_center (can be negative if off-track)
-                    dist_boundary = self.track.half_width - abs(dist_center)
-                    obs_dict[component] = torch.tensor([dist_boundary], dtype=torch.float32, device=device)
-                # Add elif blocks here for other complex/derived observations
-                elif component == 'lidar': 
-                    obs_dict[component] = self._calculate_lidar(agent_id, all_car_data)
+
+            if isinstance(agent_instance, MPCAgent):
+                # MPC gets specific observations as numpy arrays or floats
+                obs_dict['x'] = float(car_data['x'])
+                obs_dict['y'] = float(car_data['y'])
+                obs_dict['v'] = float(car_data['v'])
+                obs_dict['theta'] = float(car_data['theta'])
+                obs_dict['steer_angle'] = float(car_data['steer_angle'])
+
+                if isinstance(self.track, OvalTrack) and self._discretized_centerline_cache:
+                    s_curr, _, _, _, _ = self._project_to_oval_centerline(
+                        obs_dict['x'], obs_dict['y']
+                    )
+                    ref_path = self._generate_reference_path(
+                        s_current=s_curr,
+                        current_car_speed=obs_dict['v'],
+                        mpc_agent=agent_instance,
+                        car_config=self.config['car']
+                    )
+                    obs_dict['reference_path'] = ref_path # This is a numpy array
                 else:
-                    # This shouldn't happen if _setup_spaces is correct, but good failsafe
-                    print(f"Warning: Cannot get observation component '{component}' for agent {agent_id}.")
-                    # Optionally add a default value like np.array([0.0], dtype=np.float32)
+                    # Fallback: Provide a dummy reference path if track type is not OvalTrack
+                    # or centerline cache is not available. MPC will likely fail or perform poorly.
+                    print(f"Warning: Could not generate reference path for MPC agent {agent_id}.")
+                    dummy_ref_path = np.zeros((agent_instance.N, 4))
+                    # Populate with current pos and zero speed to avoid crashes, but MPC will struggle
+                    for k_dum in range(agent_instance.N):
+                        dummy_ref_path[k_dum,0] = obs_dict['x']
+                        dummy_ref_path[k_dum,1] = obs_dict['y']
+                        dummy_ref_path[k_dum,2] = obs_dict['theta']
+                        dummy_ref_path[k_dum,3] = 0.0 # Target zero speed
+                    obs_dict['reference_path'] = dummy_ref_path
+            else:
+                for component in self.observation_components:
+                    if component in car_data:
+                        # Directly get from car data if available
+                        obs_dict[component] = torch.tensor([car_data[component]], dtype=torch.float32, device=device)
+                    elif component == 'dist_to_centerline':
+                        # Calculate based on track and car position
+                        dist = self.track.get_distance_to_centerline(car_data['x'], car_data['y'])
+                        obs_dict[component] = torch.tensor([dist], dtype=torch.float32, device=device)
+                    elif component == 'dist_to_boundary':
+                        # Calculate distance to centerline first
+                        dist_center = self.track.get_distance_to_centerline(car_data['x'], car_data['y'])
+                        # Distance to boundary is half_width - dist_center (can be negative if off-track)
+                        dist_boundary = self.track.half_width - abs(dist_center)
+                        obs_dict[component] = torch.tensor([dist_boundary], dtype=torch.float32, device=device)
+                    # Add elif blocks here for other complex/derived observations
+                    elif component == 'lidar': 
+                        obs_dict[component] = self._calculate_lidar(agent_id, all_car_data)
+                    else:
+                        # This shouldn't happen if _setup_spaces is correct, but good failsafe
+                        print(f"Warning: Cannot get observation component '{component}' for agent {agent_id}.")
+                        # Optionally add a default value like np.array([0.0], dtype=np.float32)
             
             observations[agent_id] = obs_dict
             

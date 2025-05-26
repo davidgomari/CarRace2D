@@ -1,6 +1,6 @@
 # Simulation Parameters
 simulation:
-  num_episodes: 10      # Number of episodes to run
+  num_episodes: 1      # Number of episodes to run
   max_steps: 10000      # Max steps per episode
   render_mode: 'human' # 'human', 'rgb_array', or None
   render_fps: 60
@@ -8,7 +8,6 @@ simulation:
   mode: 'single'
   num_agents: 1 
 
-  
 # Training Parameters
 training:
   num_episodes: 1000     # Number of training episodes
@@ -39,6 +38,7 @@ environment:
     - 'steer_angle'
     - 'accel'
     - 'dist_to_centerline'
+  mpc_ref_path_target_speed_factor: 0.8
 
 # Car Parameters
 car:
@@ -62,7 +62,7 @@ car:
   gravity: 9.81          # Acceleration due to gravity (m/s^2)
   # ------------------------------------ 
 
-# Agent Configuration Details (Used in Single Agent Mode)
+# Agent Configuration Details
 # The simulation script will select the config based on the chosen agent type
 agent_config:
   human:
@@ -71,10 +71,20 @@ agent_config:
   random:
     description: "Takes random actions within the action space."
   mpc:
-    description: "Model Predictive Control agent."
-    horizon: 15       # Prediction horizon (N)
-    # dt will be set from simulation dt
-    # Add other MPC specific parameters if needed
+    # type: 'mpc' # Type is already known from simulation.agent_type
+    description: "Model Predictive Control agent with path tracking."
+    horizon: 5      # N - Prediction horizon
+    # MPC Cost Function Weights (example values, TUNE THESE!)
+    Q_pos: 1.0       # Penalty for deviation from reference path x,y
+    Q_head: 5.0       # Penalty for heading error
+    Q_vel: 5.0        # Penalty for velocity error from reference
+    R_accel: 0.5      # Penalty for large acceleration commands
+    R_steer_cmd: 0.2  # Penalty for large target steering commands
+    R_steer_rate: 0.05 # Penalty for rate of change of target steering commands
+    # MPC Model/Constraint Parameters
+    mpc_max_accel: 3.0  # Max acceleration MPC will command (m/s^2)
+    mpc_min_accel: -5.0 # Max deceleration MPC will command (m/s^2)
+    max_steer_rate_sim: 3.14 # rad/s, how fast steer_angle_vehicle changes towards target_steer_cmd in MPC model
   rl:
     description: "Reinforcement Learning agent."
     model_path: "models/single_agent/trained_model.zip" # Path to the saved RL model
