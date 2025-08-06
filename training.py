@@ -286,6 +286,9 @@ def multi_agent_training(config):
     recent_rewards = {agent_id: deque(maxlen=20) for agent_id in rl_agents}
 
     print(f"Starting multi-agent training with {num_episodes} episodes...")
+
+    print(f"Number of RL agents: {len(rl_agents)}")
+
     for episode in range(num_episodes):
         state, info = env.reset()
         done = {agent_id: False for agent_id in rl_agents}

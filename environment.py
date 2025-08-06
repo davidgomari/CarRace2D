@@ -34,7 +34,7 @@ class RacingEnv(gym.Env):
             total_s = self.track.centerline_length
             for i in range(self._centerline_projection_segments):
                 s = (i / self._centerline_projection_segments) * total_s
-                x, y, theta = self._get_oval_centerline_point(s)
+                x, y, theta = self.track.get_oval_centerline_point(s)
                 self._discretized_centerline_cache.append({'s': s, 'x': x, 'y': y, 'theta': theta})
 
         self._setup_agents_and_cars()
@@ -69,7 +69,6 @@ class RacingEnv(gym.Env):
         # Default target speed for MPC reference path (as a percentage of max_speed)
         self.mpc_ref_path_target_speed_factor = self.config.get('environment', {}).get('mpc_ref_path_target_speed_factor', 0.75)
 
-
     def _setup_track(self):
         """Initialize the racing track."""
         track_cfg = self.config['track']
@@ -83,53 +82,6 @@ class RacingEnv(gym.Env):
         self.config['car']['track_radius'] = self.track.radius
 
     # --- Helper methods for Oval Track Centerline and MPC Reference Path ---
-    def _get_oval_centerline_point(self, s_raw):
-        """
-        Calculates the (x, y, theta) coordinates and tangent angle 
-        on the oval track's centerline for a given arc length s_raw.
-        Assumes s=0 starts at the beginning of the first straight segment.
-        """
-        L = self.track.length
-        R = self.track.radius
-        total_length = self.track.centerline_length
-        s = s_raw % total_length # Ensure s is within [0, total_length)
-
-        # Define critical points (arc lengths at segment transitions)
-        s_bottom_straight_end = L
-        s_right_curve_end = L + np.pi * R
-        s_top_straight_end = L + np.pi * R + L
-        # s_left_curve_end = total_length
-
-        if 0 <= s < s_bottom_straight_end: # Bottom straight
-            prog_in_seg = s
-            x = -L/2 + prog_in_seg
-            y = -R
-            theta = 0.0
-        elif s_bottom_straight_end <= s < s_right_curve_end: # Right curve
-            prog_in_seg = s - s_bottom_straight_end
-            angle_in_curve = prog_in_seg / R 
-            # Curve starts at (-pi/2) relative to curve center's +x axis
-            current_angle_on_circle = -np.pi/2 + angle_in_curve 
-            x = self.track.curve1_center_x + R * np.cos(current_angle_on_circle)
-            y = self.track.curve1_center_y + R * np.sin(current_angle_on_circle)
-            theta = current_angle_on_circle + np.pi/2
-        elif s_right_curve_end <= s < s_top_straight_end: # Top straight
-            prog_in_seg = s - s_right_curve_end
-            x = L/2 - prog_in_seg
-            y = R
-            theta = np.pi
-        else: # Left curve (s_top_straight_end <= s < total_length)
-            prog_in_seg = s - s_top_straight_end
-            angle_in_curve = prog_in_seg / R
-            # Curve starts at (pi/2) relative to curve center's +x axis
-            current_angle_on_circle = np.pi/2 + angle_in_curve
-            x = self.track.curve2_center_x + R * np.cos(current_angle_on_circle)
-            y = self.track.curve2_center_y + R * np.sin(current_angle_on_circle)
-            theta = current_angle_on_circle + np.pi/2
-
-        theta = (theta + np.pi) % (2 * np.pi) - np.pi # Normalize theta to [-pi, pi]
-        return x, y, theta
-
     def _project_to_oval_centerline(self, car_x, car_y):
         """
         Projects the car's (x,y) position to the closest point on the pre-calculated
@@ -179,8 +131,8 @@ class RacingEnv(gym.Env):
         s1 = (s_raw - ds / 2 + total_len) % total_len # Handle wrapping
         s2 = (s_raw + ds / 2) % total_len
 
-        _, _, theta1 = self._get_oval_centerline_point(s1)
-        _, _, theta2 = self._get_oval_centerline_point(s2)
+        _, _, theta1 = self.track.get_oval_centerline_point(s1)
+        _, _, theta2 = self.track.get_oval_centerline_point(s2)
 
         dtheta = theta2 - theta1
         # Normalize angle difference to [-pi, pi]
@@ -189,46 +141,126 @@ class RacingEnv(gym.Env):
         curvature = dtheta / ds if abs(ds) > 1e-6 else 0.0
         return curvature
 
-    def _generate_reference_path(self, s_current, current_car_speed, mpc_agent, car_config):
+    # def _generate_reference_path(self, s_current, total_prog, current_car_speed, mpc_agent, car_config):
+    #     N = mpc_agent.N
+    #     dt_mpc = mpc_agent.dt
+    #     reference_path = np.zeros((N, 4))
+    #     max_speed_car = car_config.get('max_speed', 20.0)
+
+    #     # print(f'[MPC DEBUG] s_current = {s_current}')
+
+    #     # Original target speed factor
+    #     base_target_v_ref = max_speed_car * self.mpc_ref_path_target_speed_factor
+
+    #     # Max lateral acceleration for reference speed calculation (e.g., 70% of tire friction limit)
+    #     # Use car_config directly as it's passed in
+    #     max_lat_accel_for_ref_speed = car_config.get('coeff_friction', 1.1) * \
+    #                                 car_config.get('gravity', 9.81) * \
+    #                                 0.7  # Safety factor for reference speed
+
+    #     current_s_on_path = s_current
+    #     # Get initial (x, y) for progress calculation
+    #     x_last, y_last, _ = self.track.get_oval_centerline_point(current_s_on_path)
+    #     total_progress = total_prog
+
+    #     lookahead_speed_for_s = 0
+    #     for k in range(N):
+    #         # Predict s for the next point on the reference path
+    #         # Using a blend of current speed and a moderate lookahead speed for s progression
+    #         # to prevent excessive lookahead if current_car_speed is very high.
+    #         if current_car_speed < 1.0 and k < 5:
+    #             lookahead_speed_for_s = base_target_v_ref * (k + 1) / 5.0
+    #         else:
+    #             lookahead_speed_for_s = base_target_v_ref
+
+    #         lookahead_dist_increment = lookahead_speed_for_s * dt_mpc
+    #         current_s_on_path += lookahead_dist_increment
+
+    #         x_ref, y_ref, theta_ref = self.track.get_oval_centerline_point(current_s_on_path)
+
+    #         curvature_val = abs(self.get_curvature_at_s(current_s_on_path))
+
+    #         v_ref_curvature_limit = max_speed_car
+    #         if curvature_val > 1e-4: # Avoid division by zero or extreme speeds on straights
+    #             v_ref_curvature_limit = np.sqrt(max_lat_accel_for_ref_speed / curvature_val)
+
+    #         if k == 0:
+    #             v_prev = current_car_speed
+    #         else:
+    #             v_prev = reference_path[k-1, 3]
+
+    #         # Determine the "desired" speed for this point based on curvature and general targets
+    #         desired_v_this_step = min(
+    #             base_target_v_ref,
+    #             v_ref_curvature_limit,
+    #             max_speed_car
+    #         )
+
+    #         # Can we accelerate to desired_v_this_step from v_prev?
+    #         max_v_by_accel = v_prev + car_config.get('max_accel', 3.0) * dt_mpc
+    #         # Can we decelerate to desired_v_this_step from v_prev?
+    #         min_v_by_decel = v_prev + car_config.get('min_accel', -5.0) * dt_mpc
+
+    #         if desired_v_this_step >= v_prev: # Trying to accelerate or maintain speed
+    #             actual_achievable_v_this_step = min(desired_v_this_step, max_v_by_accel)
+    #         else: # Trying to decelerate
+    #             actual_achievable_v_this_step = max(desired_v_this_step, min_v_by_decel)
+            
+    #         # Ensure it does not exceed overall car max speed (could be redundant if desired_v_this_step already considers it)
+    #         actual_achievable_v_this_step = min(actual_achievable_v_this_step, max_speed_car)
+
+    #         final_v_ref = max(actual_achievable_v_this_step, 0.3) # Ensure a minimum positive speed
+    #         reference_path[k, :] = [x_ref, y_ref, theta_ref, final_v_ref]
+
+    #         # --- Progress calculation ---
+    #         progress = self.track.calculate_progress(x_last, y_last, x_ref, y_ref)
+    #         total_progress += progress
+    #         x_last, y_last = x_ref, y_ref
+
+    #     return reference_path, total_progress
+
+    # In environment.py, replace _generate_reference_path
+    def _generate_reference_path(self, s_current, total_prog, current_car_speed, mpc_agent, car_config, opponent_predictions=None):
         N = mpc_agent.N
         dt_mpc = mpc_agent.dt
         reference_path = np.zeros((N, 4))
-        max_speed_car = car_config.get('max_speed', 20.0)
 
-        # Original target speed factor
-        base_target_v_ref = max_speed_car * self.mpc_ref_path_target_speed_factor
+        if opponent_predictions is None:
+            opponent_predictions = []
 
-        # Max lateral acceleration for reference speed calculation (e.g., 70% of tire friction limit)
-        # Use car_config directly as it's passed in
-        max_lat_accel_for_ref_speed = car_config.get('coeff_friction', 1.1) * \
-                                    car_config.get('gravity', 9.81) * \
-                                    0.7  # Safety factor for reference speed
+        opponent_positions = []
+        for k in range(N):
+            step_positions = []
+            for opp in opponent_predictions:
+                if k < len(opp['x_traj']):
+                    step_positions.append({
+                        'x': opp['x_traj'][k],
+                        'y': opp['y_traj'][k],
+                        'radius': opp.get('radius', 1.5)
+                    })
+            opponent_positions.append(step_positions)
 
         current_s_on_path = s_current
+        x_last, y_last, _ = self.track.get_oval_centerline_point(current_s_on_path)
+        total_progress = total_prog
+
         for k in range(N):
-            # Predict s for the next point on the reference path
-            # Using a blend of current speed and a moderate lookahead speed for s progression
-            # to prevent excessive lookahead if current_car_speed is very high.
-            lookahead_speed_for_s = min(current_car_speed, base_target_v_ref * 1.2) # Cap lookahead advance speed
-            lookahead_dist_increment = lookahead_speed_for_s * dt_mpc
-            current_s_on_path += lookahead_dist_increment
+            # Use racing line with opponent positions
+            x_ref, y_ref, theta_ref, v_ref = self.track.get_racing_line_point(current_s_on_path, opponent_positions[k])
+            reference_path[k, :] = [x_ref, y_ref, theta_ref, v_ref]
 
-            x_ref, y_ref, theta_ref = self._get_oval_centerline_point(current_s_on_path)
+            # Update progress
+            progress = self.track.calculate_progress(x_last, y_last, x_ref, y_ref)
+            total_progress += progress
+            x_last, y_last = x_ref, y_ref
 
-            curvature_val = abs(self.get_curvature_at_s(current_s_on_path))
+            # Advance arc length using v_ref
+            current_s_on_path += v_ref * dt_mpc
+            current_s_on_path %= self.track.centerline_length
 
-            v_ref_curvature_limit = max_speed_car
-            if curvature_val > 1e-4: # Avoid division by zero or extreme speeds on straights
-                v_ref_curvature_limit = np.sqrt(max_lat_accel_for_ref_speed / curvature_val)
+        return reference_path, total_progress
+    # # --- End of MPC Helper Methods ---
 
-            # Effective reference speed for this point
-            final_v_ref = min(base_target_v_ref, v_ref_curvature_limit)
-            final_v_ref = max(final_v_ref, 1.0) # Ensure a minimum positive speed
-
-            reference_path[k, :] = [x_ref, y_ref, theta_ref, final_v_ref]
-
-        return reference_path
-    # --- End of MPC Helper Methods ---
 
     def _setup_agents_and_cars(self):
         """Initialize agents and their corresponding cars."""
@@ -459,13 +491,17 @@ class RacingEnv(gym.Env):
                     s_curr, _, _, _, _ = self._project_to_oval_centerline(
                         obs_dict['x'], obs_dict['y']
                     )
-                    ref_path = self._generate_reference_path(
+                    opponent_predictions = []
+                    ref_path, ref_progress = self._generate_reference_path(
                         s_current=s_curr,
+                        total_prog=self.cars[agent_id].total_progress,
                         current_car_speed=obs_dict['v'],
                         mpc_agent=agent_instance,
-                        car_config=self.config['car']
+                        car_config=self.config['car'],
+                        opponent_predictions=opponent_predictions
                     )
                     obs_dict['reference_path'] = ref_path # This is a numpy array
+                    obs_dict['reference_progress'] = ref_progress
                 else:
                     # Fallback: Provide a dummy reference path if track type is not OvalTrack
                     # or centerline cache is not available. MPC will likely fail or perform poorly.
@@ -478,6 +514,78 @@ class RacingEnv(gym.Env):
                         dummy_ref_path[k_dum,2] = obs_dict['theta']
                         dummy_ref_path[k_dum,3] = 0.0 # Target zero speed
                     obs_dict['reference_path'] = dummy_ref_path
+
+                # --- Opponent prediction for collision avoidance ---
+                opponent_predicted_trajectories = []
+                N = agent_instance.N
+                dt = agent_instance.dt
+                for other_id, other_car in self.cars.items():
+                    if other_id == agent_id:
+                        continue
+                    other_agent = self.agents[other_id]
+                    # Clone the car state (x, y, v, theta, steer)
+                    state = [other_car.x, other_car.y, other_car.v, other_car.theta, other_car.steer_angle]
+                    x_traj = np.zeros(N+1)
+                    y_traj = np.zeros(N+1)
+                    x_traj[0] = other_car.x
+                    y_traj[0] = other_car.y
+                    v = other_car.v
+                    theta = other_car.theta
+                    steer = other_car.steer_angle
+                    # For RL agents, use their model to predict actions
+                    if isinstance(other_agent, RLAgent):
+                        # Prepare a minimal observation for RL agent (match what it expects)
+                        obs_comp = self.observation_components
+                        # Cache LiDAR for this agent (from current state)
+                        cached_lidar = None
+                        if 'lidar' in obs_comp:
+                            cached_lidar = self._calculate_lidar(other_id, all_car_data).cpu().numpy()
+                        car_params = other_car.params
+                        car_sim = Car('sim', [state[0], state[1], state[2], state[3]], car_params)
+                        car_sim.steer_angle = state[4]
+                        for k in range(N):
+                            obs_dict_rl = {}
+                            for comp in obs_comp:
+                                if comp == 'x':
+                                    obs_dict_rl['x'] = np.array([car_sim.x], dtype=np.float32)
+                                elif comp == 'y':
+                                    obs_dict_rl['y'] = np.array([car_sim.y], dtype=np.float32)
+                                elif comp == 'v':
+                                    obs_dict_rl['v'] = np.array([car_sim.v], dtype=np.float32)
+                                elif comp == 'theta':
+                                    obs_dict_rl['theta'] = np.array([car_sim.theta], dtype=np.float32)
+                                elif comp == 'steer_angle':
+                                    obs_dict_rl['steer_angle'] = np.array([car_sim.steer_angle], dtype=np.float32)
+                                elif comp == 'accel':
+                                    obs_dict_rl['accel'] = np.array([car_sim.accel_lon], dtype=np.float32)
+                                elif comp == 'accel_lat':
+                                    obs_dict_rl['accel_lat'] = np.array([car_sim.accel_lat], dtype=np.float32)
+                                elif comp == 'dist_to_centerline':
+                                    obs_dict_rl['dist_to_centerline'] = np.array([
+                                        self.track.get_distance_to_centerline(car_sim.x, car_sim.y)
+                                    ], dtype=np.float32)
+                                elif comp == 'dist_to_boundary':
+                                    dist_center = self.track.get_distance_to_centerline(car_sim.x, car_sim.y)
+                                    dist_boundary = self.track.half_width - abs(dist_center)
+                                    obs_dict_rl['dist_to_boundary'] = np.array([dist_boundary], dtype=np.float32)
+                                elif comp == 'lidar':
+                                    obs_dict_rl['lidar'] = cached_lidar if cached_lidar is not None else np.zeros(self.lidar_num_beams, dtype=np.float32)
+                                # Add more if needed
+                            action = other_agent.get_action(obs_dict_rl)
+                            car_sim.update(action, dt)
+                            x_traj[k+1] = car_sim.x
+                            y_traj[k+1] = car_sim.y
+                    else:
+                        # For other agents, use constant velocity/heading
+                        for k in range(N):
+                            x_traj[k+1] = x_traj[k] + v * np.cos(theta) * dt
+                            y_traj[k+1] = y_traj[k] + v * np.sin(theta) * dt
+                    opponent_predicted_trajectories.append({
+                        'x_traj': x_traj,
+                        'y_traj': y_traj,
+                        'radius': getattr(other_car, 'collision_radius', 1.5)
+                    })
+                obs_dict['opponent_predicted_trajectories'] = opponent_predicted_trajectories
             else:
                 for component in self.observation_components:
                     if component in car_data:

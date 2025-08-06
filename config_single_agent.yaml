@@ -38,7 +38,7 @@ environment:
     - 'steer_angle'
     - 'accel'
     - 'dist_to_centerline'
-  mpc_ref_path_target_speed_factor: 0.8
+  mpc_ref_path_target_speed_factor: 0.75
 
 # Car Parameters
 car:
@@ -73,10 +73,11 @@ agent_config:
   mpc:
     # type: 'mpc' # Type is already known from simulation.agent_type
     description: "Model Predictive Control agent with path tracking."
-    horizon: 5      # N - Prediction horizon
+    horizon: 3      # N - Prediction horizon
     # MPC Cost Function Weights (example values, TUNE THESE!)
+    Q_progress: 5.0
     Q_pos: 1.0       # Penalty for deviation from reference path x,y
-    Q_head: 5.0       # Penalty for heading error
+    Q_head: 0.2       # Penalty for heading error
     Q_vel: 5.0        # Penalty for velocity error from reference
     R_accel: 0.5      # Penalty for large acceleration commands
     R_steer_cmd: 0.2  # Penalty for large target steering commands
@@ -85,6 +86,35 @@ agent_config:
     mpc_max_accel: 3.0  # Max acceleration MPC will command (m/s^2)
     mpc_min_accel: -5.0 # Max deceleration MPC will command (m/s^2)
     max_steer_rate_sim: 3.14 # rad/s, how fast steer_angle_vehicle changes towards target_steer_cmd in MPC model
+    # Parameters for collision avoidance
+    max_opponents_to_consider: 0 # Max opponents MPC will create constraints for
+    default_opponent_collision_radius: 1.5 # Used if opponent radius not in prediction
+
+    # --- NEW: Configuration Flags for Enabling/Disabling MPC Components ---
+    # Cost Components (set to false to disable)
+    use_progress_cost: true
+    use_path_tracking_cost: false
+    use_control_effort_cost: false
+    use_heading_cost: true
+    use_velocity_cost: true
+    use_steer_rate_cost: false
+    use_terminal_cost: false         # Enables/disables the entire terminal cost block
+
+    # Constraint Components (set to false to disable)
+    apply_track_boundaries: true
+    # apply_collision_avoidance will be true if max_opponents_to_consider > 0, otherwise false.
+    # You can explicitly set it to false here to override even if max_opponents_to_consider > 0.
+    apply_collision_avoidance: false # Default is (max_opponents_to_consider > 0)
+
+    # Optional: Soft Track Boundaries (if you want to experiment with them)
+    use_soft_track_boundaries: false # Set to true to use slack variables for track boundaries
+    soft_boundary_penalty: 1000.0    # Penalty weight for the slack variables if soft boundaries are used
+
+    # Optional: Solver options for IPOPT (passed directly to CasADi)
+    solver_options:
+      ipopt.max_iter: 30
+      ipopt.tol: 1.0e-2
+      ipopt.constr_viol_tol: 1.0e-2
   rl:
     description: "Reinforcement Learning agent."
     model_path: "models/single_agent/trained_model.zip" # Path to the saved RL model
