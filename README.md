@@ -1,149 +1,261 @@
 # CarRace2D Simulation
 
-A 2D racing simulation environment built with Python, Pygame, and Gymnasium. It supports single and multi-agent simulations with various agent types (Human, RL, MPC, Random) and features a graphical user interface.
+A comprehensive 2D racing simulation environment built with Python, Pygame, and Gymnasium. Perfect for reinforcement learning research, autonomous vehicle development, and multi-agent racing simulations. **Version 2.5** introduces headless training capabilities for cloud environments, enhanced LiDAR sensor support, and improved MPC agent performance.
 
-## Features
+## 🚀 Quick Start
 
-*   **Graphical User Interface:** Main menu for selecting modes (Simulation/Training) and agent configurations using Pygame.
-*   **Simulation Modes:** Supports both single-agent and multi-agent simulations.
-*   **Agent Types:** Includes Human (keyboard control), Random, basic Model Predictive Control (MPC using CasADi), and Reinforcement Learning (RL) agents with configurable algorithms.
-*   **Configurable Environment:** Simulation parameters, track layout, car physics, agent types, and more can be configured via YAML files.
-*   **Modular Structure:** Code is organized into modules for UI, environment, track, car, agents, etc.
-*   **Basic Physics:** Implements a kinematic bicycle model with considerations for engine/brake forces, drag, and rolling resistance.
-*   **Training Support:** Built-in training functionality for RL agents with configurable parameters and visualization options.
-*   **Multi-Agent RL Training:** Supports simultaneous training of multiple RL agents in a shared environment, with separate models and optimizers for each agent.
-*   **UI Controls:** Interactive controls during simulation and training (Back, Reset, Pause/Resume).
-*   **Customizable UI Sidebar:** Configure which agent/car properties are displayed in the sidebar via the config file.
-*   **Flexible Observations:** Easily add new observation components (e.g., acceleration) to the environment and UI.
+### Installation
 
-## Visuals
+1. **Clone and setup:**
+   ```bash
+   git clone <your-repository-url>
+   cd CarRace2D
+   pip install -r requirements.txt
+   ```
 
-![Simulation - Multi Agent Mode](/images/screenshot_simulation_multiagent_v2.png)
+2. **Run the simulation:**
+   ```bash
+   python main.py
+   ```
 
-## Requirements
+3. **Choose your mode:**
+   - **Simulation**: Watch agents race with real-time visualization
+   - **Training**: Train RL agents with interactive monitoring
 
-* Python 3.8 or higher
-* Operating System: Windows, macOS, or Linux
-* Graphics: OpenGL 2.0 compatible graphics card
-* Memory: 4GB RAM minimum, 8GB recommended
-* Storage: 500MB free space
+### First Steps
 
-## Installation
+1. **Try Human Control:**
+   - Select "Simulation" → "Single Agent" → "Human"
+   - Use arrow keys: ↑↓ (throttle/brake), ←→ (steering)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <your-repository-url>
-    cd <repository-directory>
-    ```
+2. **Watch AI Agents:**
+   - Select "Simulation" → "Single Agent" → "MPC" or "Random"
+   - Observe how different agent types behave
 
-2.  **Create and activate a virtual environment (Recommended):**
-    ```bash
-    python -m venv venv
-    # On Windows
-    .\venv\Scripts\activate
-    # On macOS/Linux
-    source venv/bin/activate
-    ```
+3. **Train Your First RL Agent:**
+   - Select "Training" → "Single Agent"
+   - Monitor training progress in real-time
+   - Use UI controls to pause/resume/save
 
-3.  **Install dependencies:**
-    Create a `requirements.txt` file with the following content:
-    ```txt
-    pygame
-    gymnasium
-    numpy
-    pyyaml
-    casadi
-    torch
-    # Add any other specific RL libraries if/when implemented (e.g., stable-baselines3)
-    ```
-    Then install using pip:
-    ```bash
-    pip install -r requirements.txt
-    ```
+## 🎯 Key Features
 
-## How to Run
+### 🏎️ **Multiple Agent Types**
+- **Human**: Keyboard-controlled racing
+- **RL**: Reinforcement Learning agents (REINFORCE algorithm)
+- **MPC**: Model Predictive Control with collision avoidance
+- **Random**: Baseline random behavior
 
-Navigate to the project's root directory in your terminal (where `main.py` is located) and run:
+### 🌐 **Flexible Environments**
+- **Single Agent**: Focus on individual agent performance
+- **Multi-Agent**: Competitive racing with multiple agents
+- **Headless Training**: Cloud-ready training without GUI
 
+### 🔧 **Advanced Systems**
+- **LiDAR Sensor**: Configurable sensor system for multi-agent scenarios
+- **Modular MPC**: Enhanced control with collision avoidance
+- **Real-time UI**: Interactive controls and monitoring
+- **Configurable Physics**: Realistic vehicle dynamics
+
+## 📁 Project Structure
+
+```
+CarRace2D/
+├── main.py                    # Main entry point
+├── train_single_agent.py      # Headless single agent training
+├── train_multi_agent.py       # Headless multi-agent training
+├── test_trained_model.py      # Model validation script
+├── config_single_agent.yaml   # Single agent configuration
+├── config.yaml               # Multi-agent configuration
+├── config_kaggle_*.yaml      # Cloud-optimized configs
+├── agents/                   # Agent implementations
+├── models/                   # Trained model storage
+├── images/                   # UI assets
+└── KAGGLE_TRAINING_README.md # Cloud training guide
+```
+
+## 🎮 Usage Modes
+
+### GUI Mode (Local Development)
 ```bash
 python main.py
 ```
+- Interactive menu system
+- Real-time visualization
+- Training monitoring
+- Model management
 
-This will launch the main menu, allowing you to select the desired simulation or training mode and configure agents.
+### Headless Mode (Cloud/Kaggle)
+```bash
+# Single agent training
+python train_single_agent.py --config config_kaggle_single.yaml --episodes 200
 
-## Quick Start Guide
+# Multi-agent training
+python train_multi_agent.py --config config_kaggle_multi.yaml --agent-type rl --episodes 150
 
-### UI Controls
+# Test trained models
+python test_trained_model.py --mode single --episodes 5
+```
 
-During both simulation and training, the following buttons are available:
+**📖 See [KAGGLE_TRAINING_README.md](KAGGLE_TRAINING_README.md) for detailed cloud training instructions.**
 
-*   **Back Button:** Returns to the main menu. During training, this will save the current model before exiting.
-*   **Reset Button:** Resets the current episode, placing all agents back at their starting positions.
-*   **Pause/Resume Button:** Toggles between pausing and resuming the simulation/training.
-*   **Sidebar Columns:** You can customize which agent/car properties are shown in the sidebar by editing the `ui.sidebar_columns` section in your config file.
+## ⚙️ Configuration
 
-### Agent Types
+The simulation is highly configurable through YAML files:
 
-*   **Human:** Controlled using keyboard arrow keys (Up/Down for throttle/brake, Left/Right for steering).
-*   **Random:** Selects actions randomly from the allowed action space.
-*   **MPC:** Uses CasADi to solve an optimization problem for determining the best action.
-*   **RL:** Implements a configurable RL agent that can load trained models and use different RL algorithms.
+- **`config_single_agent.yaml`**: Single agent settings
+- **`config.yaml`**: Multi-agent settings  
+- **`config_kaggle_*.yaml`**: Cloud-optimized configurations
 
-### Training
+Key configuration areas:
+- **Simulation**: Episode count, time steps, rendering
+- **Training**: Learning rates, algorithms, save frequency
+- **Physics**: Vehicle parameters, track layout
+- **Agents**: Behavior types, model paths
+- **UI**: Display options, sidebar customization
 
-To resume training from a previous model, set `resume_training: True` in your config file. Models are saved automatically during training.
+## 🎯 Common Use Cases
 
-**Multi-Agent Training:**
+### Research & Development
+- **RL Algorithm Testing**: Implement and test new algorithms
+- **Multi-Agent Learning**: Study competitive behaviors
+- **Control Systems**: Develop and validate MPC strategies
+- **Sensor Fusion**: Experiment with LiDAR and other sensors
 
-You can train multiple RL agents simultaneously in multi-agent mode. Each RL agent will have its own model and optimizer, and training progress is tracked individually. Configure multi-agent training in `config.yaml` and select "Multi Agent Training" from the main menu.
+### Education & Learning
+- **Reinforcement Learning**: Learn RL concepts hands-on
+- **Control Theory**: Understand MPC and optimal control
+- **Game AI**: Study agent behavior and decision making
+- **Physics Simulation**: Explore vehicle dynamics
 
-## Documentation
+### Competition & Benchmarking
+- **Agent Comparison**: Compare different AI approaches
+- **Performance Testing**: Benchmark algorithms and strategies
+- **Racing Competitions**: Host multi-agent racing events
+
+## 🛠️ Customization
+
+### Adding New Agents
+1. Create agent class in `agents/` directory
+2. Inherit from `BaseAgent`
+3. Implement `get_action()` method
+4. Register in configuration
+
+### Modifying Physics
+- Edit `car.py` for vehicle dynamics
+- Adjust parameters in config files
+- Add new physics components
+
+### Creating Custom Tracks
+- Implement track class in `track.py`
+- Add visualization in `ui.py`
+- Configure in YAML files
+
+### Implementing New RL Algorithms
+- Add algorithm file in `rl_algo/` directory
+- Follow existing interface
+- Register in training functions
+
+## 📊 Performance Tips
+
+### For Training
+- Use `render_mode: None` for faster training
+- Start with fewer episodes (100-500) for testing
+- Use Kaggle-optimized configs for cloud environments
+- Monitor GPU usage with `nvidia-smi`
+
+### For Simulation
+- Reduce `render_fps` for better performance
+- Use simplified physics for large agent counts
+- Optimize track complexity based on needs
+
+### For Development
+- Use debug scripts for troubleshooting
+- Test with small configurations first
+- Save models frequently during development
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Black screen/No display | Update graphics drivers, use headless mode for training |
+| Slow performance | Reduce render_fps, use `render_mode: None` |
+| Import errors | Check virtual environment, install requirements |
+| Memory issues | Reduce agent count, simplify physics |
+| LiDAR problems | Use `test_lidar_debug.py` script |
+
+### Getting Help
+1. Check the [Documentation](DOCUMENTATION.md) for detailed guides
+2. Review configuration examples
+3. Use debug scripts for troubleshooting
+4. Check error messages for specific issues
+
+## 📚 Documentation
 
 <div align="center">
-  <h2>📚 Detailed Documentation Available</h2>
+  <h3>📖 Comprehensive Documentation Available</h3>
   <p>
     <a href="DOCUMENTATION.md">
       <img src="https://img.shields.io/badge/Documentation-Click%20Here-blue?style=for-the-badge&logo=markdown&logoColor=white" alt="Documentation Badge">
     </a>
   </p>
-  <p>
-    For comprehensive information about configuration, customization, and advanced features, please refer to our detailed documentation.
-  </p>
 </div>
 
-The documentation includes:
+**📋 Documentation includes:**
 - Detailed configuration guides
-- Customization options for agents, physics, and tracks
-- Advanced features and optimization tips
-- Complete API reference
-- Best practices and examples
+- Customization tutorials
+- API reference
+- Best practices
+- Advanced features
+- Performance optimization
+- Troubleshooting guides
 
-[Click here to view the full documentation](DOCUMENTATION.md)
+**[📖 View Full Documentation](DOCUMENTATION.md)**
 
-## Troubleshooting
+## 🚀 What's New in v2.5
 
-Common issues and their solutions:
+### ✨ Major Features
+- **🌐 Headless Training**: Cloud-ready training scripts for Kaggle and other environments
+- **📡 Enhanced LiDAR**: Configurable sensor system with collision detection
+- **🎯 Improved MPC**: Modular cost functions and collision avoidance
+- **⚡ Performance**: Optimized configurations for faster training
+- **🐛 Debug Tools**: Enhanced error handling and debugging scripts
 
-* **Black Screen/No Display**: Ensure your graphics drivers are up to date and OpenGL 2.0 is supported.
-* **Slow Performance**: Try reducing the `render_fps` in the configuration file or setting `render_mode` to `None` for training.
-* **Import Errors**: Make sure all dependencies are installed correctly in your virtual environment.
-* **Memory Issues**: Reduce the number of agents or simulation complexity in the configuration file.
+### 🔧 Improvements
+- Better error messages and validation
+- More flexible configuration options
+- Enhanced documentation and examples
+- Improved training stability
+- Better cloud environment support
 
-## License
+## 🗺️ Roadmap
+
+### ✅ Completed
+- [x] Multi-agent RL training support
+- [x] Headless training for cloud environments
+- [x] Enhanced LiDAR sensor system
+- [x] Improved MPC agent with modular components
+- [x] Real-time UI with interactive controls
+
+### 🚧 Planned
+- [ ] Additional RL algorithms (PPO, TD3, SAC)
+- [ ] Custom track editor
+- [ ] Replay system for saving/loading races
+- [ ] Performance optimization for large-scale simulations
+- [ ] Additional physics models and vehicle types
+
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Roadmap
+## 🙏 Acknowledgments
 
-Planned features and improvements:
+- Built with [Pygame](https://www.pygame.org/) and [Gymnasium](https://gymnasium.farama.org/)
+- Enhanced with [CasADi](https://web.casadi.org/) for MPC optimization
+- Powered by [PyTorch](https://pytorch.org/) for reinforcement learning
+- Inspired by autonomous racing research and development
 
-* [OK] Multi-agent RL training support
-* [ ] Additional RL algorithms (PPO, TD3, SAC)
-* [ ] Custom track editor
-* [ ] Replay system for saving and loading races
-* [ ] Performance optimization for large-scale simulations
-* [ ] Additional physics models and vehicle types
+---
 
-## Acknowledgments
-
-* Built with [Pygame](https://www.pygame.org/) and [Gymnasium](https://gymnasium.farama.org/)
+**🎯 Ready to start racing? Run `python main.py` and choose your adventure!**

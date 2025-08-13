@@ -202,6 +202,36 @@ def handle_pygame_events(env, observations, metrics, current_step):
     
     return running, observations, metrics, current_step
 
+def print_lidar_values(agents, observations, current_step, current_time):
+    """Print lidar values for all agents in the simulation."""
+    for agent_id, agent in agents.items():
+        # Get the observation for this agent
+        if isinstance(observations, dict):
+            agent_obs = observations.get(agent_id, {})
+        else:
+            # Single agent mode
+            agent_obs = observations
+        
+        # Check if lidar data is available in the observation
+        if isinstance(agent_obs, dict) and 'lidar' in agent_obs:
+            lidar_data = agent_obs['lidar']
+            # Convert to numpy array if it's a torch tensor
+            if hasattr(lidar_data, 'cpu'):
+                lidar_data = lidar_data.cpu().numpy()
+            elif hasattr(lidar_data, 'numpy'):
+                lidar_data = lidar_data.numpy()
+            
+            # Get agent type for display
+            agent_type = agent.__class__.__name__
+            
+            # Format lidar data for better readability
+            lidar_str = np.array2string(lidar_data, precision=2, separator=', ', max_line_width=120)
+            print(f"Step {current_step:4d} (t={current_time:6.2f}s) - {agent_id} ({agent_type}) LiDAR: {lidar_str}")
+        else:
+            # Get agent type for display
+            agent_type = agent.__class__.__name__
+            print(f"Step {current_step:4d} (t={current_time:6.2f}s) - {agent_id} ({agent_type}): No lidar data in observation")
+
 def run_episode(env, mode, agents, metrics, config):
     """Run a single episode of the simulation."""
     # Reset environment
@@ -217,6 +247,12 @@ def run_episode(env, mode, agents, metrics, config):
     # Initialize pygame clock for controlling frame rate
     if env.render_mode == 'human':
         print_controls()
+    
+    # Print header for LiDAR output if enabled
+    if not config.get('training_mode', False) and config.get('simulation', {}).get('print_lidar', False):
+        print("\n=== LiDAR Output Enabled ===")
+        print("Format: Step XXXX (t=XX.XXs) - agent_id (AgentType) LiDAR: [distances...]")
+        print("=" * 60)
 
     # Main Simulation Loop
     running = True
@@ -240,6 +276,10 @@ def run_episode(env, mode, agents, metrics, config):
         current_step += 1
         current_time = current_step * env.dt
         update_metrics(mode, rewards, infos, current_time, metrics)
+
+        # Print LiDAR values for RL agents (only in simulation mode, not training)
+        if not config.get('training_mode', False) and config.get('simulation', {}).get('print_lidar', False):
+            print_lidar_values(agents, observations, current_step, current_time)
 
         # Render Frame
         if env.render_mode in ['human', 'rgb_array']:

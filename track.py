@@ -125,6 +125,48 @@ class OvalTrack:
                  return True
         return False
 
+    def vectorized_is_on_track(self, x_coords, y_coords):
+        """Vectorized version of track boundary check for multiple points.
+        
+        Args:
+            x_coords (array-like): Array of x-coordinates
+            y_coords (array-like): Array of y-coordinates
+            
+        Returns:
+            numpy.ndarray: Boolean array indicating which points are on track
+        """
+        # Convert to numpy arrays if they aren't already
+        x_coords = np.asarray(x_coords)
+        y_coords = np.asarray(y_coords)
+        
+        # Initialize result array
+        result = np.zeros(len(x_coords), dtype=bool)
+        
+        # Check straight sections
+        straight_mask = (-self.length / 2 <= x_coords) & (x_coords <= self.length / 2)
+        straight_valid = (self.inner_radius <= np.abs(y_coords)) & (np.abs(y_coords) <= self.outer_radius)
+        result[straight_mask] = straight_valid[straight_mask]
+        
+        # Check right curve
+        right_curve_mask = x_coords > self.length / 2
+        if np.any(right_curve_mask):
+            dx_right = x_coords[right_curve_mask] - self.curve1_center_x
+            dy_right = y_coords[right_curve_mask] - self.curve1_center_y
+            dist_sq_right = dx_right**2 + dy_right**2
+            right_valid = (self.inner_radius**2 <= dist_sq_right) & (dist_sq_right <= self.outer_radius**2)
+            result[right_curve_mask] = right_valid
+        
+        # Check left curve
+        left_curve_mask = x_coords < -self.length / 2
+        if np.any(left_curve_mask):
+            dx_left = x_coords[left_curve_mask] - self.curve2_center_x
+            dy_left = y_coords[left_curve_mask] - self.curve2_center_y
+            dist_sq_left = dx_left**2 + dy_left**2
+            left_valid = (self.inner_radius**2 <= dist_sq_left) & (dist_sq_left <= self.outer_radius**2)
+            result[left_curve_mask] = left_valid
+        
+        return result
+
     def get_distance_to_centerline(self, x, y):
         """Calculate the distance from a point to the centerline."""
         # For straight sections

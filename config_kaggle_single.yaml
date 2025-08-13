@@ -1,0 +1,80 @@
+# Kaggle-Optimized Single Agent Training Configuration
+# This configuration is designed for headless training in Kaggle environments
+
+# Simulation Parameters
+simulation:
+  num_episodes: 1
+  max_steps: 1000
+  render_mode: None  # No rendering for headless training
+  render_fps: 60
+  dt: 0.1
+  mode: 'single'
+  num_agents: 1
+  print_lidar: false
+
+# Training Parameters (Optimized for Kaggle)
+training:
+  num_episodes: 500      # Reduced for faster training
+  max_steps: 2000        # Reduced for faster episodes
+  render_mode: None      # No rendering during training
+  render_fps: 5
+  save_frequency: 50     # Save more frequently
+  resume_training: False # Start fresh
+  learning_rate: 0.001   # Conservative learning rate
+  discount_factor: 0.9
+  rl_algo: 'reinforce'
+
+# Track Parameters (Simple oval track)
+track:
+  type: 'oval'
+  length: 80.0          # Shorter track for faster training
+  radius: 25.0
+  width: 12.0
+  start_line_x: 0.0
+  start_lane: 'bottom'
+
+# Environment Configuration
+environment:
+  observation_components: 
+    - 'v'
+    - 'steer_angle'
+    - 'accel'
+    - 'dist_to_centerline'
+
+# Car Parameters (Simplified physics)
+car:
+  wheelbase: 2.5
+  mass: 1500
+  max_speed: 15.0       # Reduced max speed
+  min_accel: -4.0
+  max_accel: 2.5
+  max_steer_angle: 0.5
+  width: 1.8
+  length: 4.0
+  collision_radius: 1.5
+  
+  # Physics parameters
+  coeff_drag: 0.8
+  coeff_rolling_resistance: 60.0
+  coeff_friction: 1.1
+  coeff_cornering_stiffness: 15.0
+  max_engine_force: 4000
+  max_brake_force: 5000
+  gravity: 9.81
+
+# Agent Configuration
+agent_config:
+  rl:
+    description: "Reinforcement Learning agent for Kaggle training"
+    model_path: "models/single_agent/trained_model.zip"
+
+# Agent Setup
+agents:
+  agent_0:
+    type: 'rl'  # Will be overridden by training script
+    start_pos_idx: 0
+
+# RL Hyperparameters
+rl:
+  learning_rate: 0.001
+  discount_factor: 0.9

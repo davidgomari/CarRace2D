@@ -1,0 +1,121 @@
+# Kaggle-Optimized Multi-Agent Training Configuration
+# This configuration is designed for headless training in Kaggle environments
+
+# Simulation Parameters
+simulation:
+  dt: 0.1
+  num_episodes: 1
+  max_steps: 1000
+  mode: 'multi'
+  num_agents: 2
+  render_mode: None  # No rendering for headless training
+  render_fps: 30
+  print_lidar: false
+
+# Training Parameters (Optimized for Kaggle)
+training:
+  num_episodes: 300      # Reduced for faster training
+  max_steps: 1500        # Reduced for faster episodes
+  render_mode: None      # No rendering during training
+  render_fps: 5
+  save_frequency: 30     # Save more frequently
+  resume_training: False # Start fresh
+  learning_rate: 0.001   # Conservative learning rate
+  discount_factor: 0.9
+  rl_algo: 'reinforce'
+
+# Track Parameters (Simple oval track)
+track:
+  type: 'oval'
+  length: 80.0          # Shorter track for faster training
+  radius: 25.0
+  width: 15.0
+  start_line_x: 0.0
+  start_lane: 'bottom'
+
+# Environment Configuration
+environment:
+  observation_components:
+    - 'v'
+    - 'steer_angle'
+    - 'accel'
+    - 'dist_to_centerline'
+
+# Car Parameters (Simplified physics)
+car:
+  wheelbase: 2.5
+  mass: 1500
+  max_speed: 15.0       # Reduced max speed
+  min_accel: -4.0
+  max_accel: 2.5
+  max_steer_angle: 0.5
+  width: 1.8
+  length: 4.0
+  collision_radius: 1.5
+
+  # Physics parameters
+  coeff_drag: 0.8
+  coeff_rolling_resistance: 60.0
+  coeff_friction: 1.1
+  coeff_cornering_stiffness: 15.0
+  max_engine_force: 4000
+  max_brake_force: 5000
+  gravity: 9.81
+
+  # LiDAR sensor (simplified)
+  lidar_num_beams: 16    # Reduced for faster computation
+  lidar_max_range: 30.0
+  lidar_eps: 1e-3
+
+# Agent Configuration
+agent_config:
+  rl:
+    description: "Reinforcement Learning agent for Kaggle training"
+  mpc:
+    description: "Model Predictive Control agent"
+    horizon: 5           # Reduced horizon for faster computation
+    Q_progress: 2.0
+    Q_pos: 1.0
+    Q_head: 0.2
+    Q_vel: 3.0
+    R_accel: 0.5
+    R_steer_cmd: 0.2
+    R_steer_rate: 0.05
+    mpc_max_accel: 2.5
+    mpc_min_accel: -4.0
+    max_steer_rate_sim: 2.0
+    max_opponents_to_consider: 1
+    default_opponent_collision_radius: 1.5
+    use_progress_cost: true
+    use_path_tracking_cost: false
+    use_control_effort_cost: false
+    use_heading_cost: true
+    use_velocity_cost: true
+    use_steer_rate_cost: false
+    use_terminal_cost: false
+    apply_track_boundaries: true
+    apply_collision_avoidance: true
+    use_soft_track_boundaries: false
+    soft_boundary_penalty: 1000.0
+    solver_options:
+      ipopt.max_iter: 20
+      ipopt.tol: 1.0e-1
+      ipopt.constr_viol_tol: 1.0e-1
+  random:
+    description: "Random agent for baseline comparison"
+
+# Agent Setup (Two RL agents for training)
+agents:
+  agent_0:
+    type: 'rl'
+    model_path: 'models/multi_agent/agent_0_model.zip'
+    start_pos_idx: 0
+  agent_1:
+    type: 'rl'
+    model_path: 'models/multi_agent/agent_1_model.zip'
+    start_pos_idx: 1
+
+# RL Hyperparameters
+rl:
+  learning_rate: 0.001
+  discount_factor: 0.9

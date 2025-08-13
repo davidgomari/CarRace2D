@@ -6,7 +6,8 @@ simulation:
   mode: 'multi'        # 'single' or 'multi'
   num_agents: 2
   render_mode: 'human' # 'human', 'rgb_array', or None
-  render_fps: 60
+  render_fps: 30
+  print_lidar: true   # Print LiDAR values for RL agents during simulation
 
 # Training Parameters
 training:
@@ -63,7 +64,7 @@ car:
   # ------------------------------------
 
   # Car LiDAR sensor
-  lidar_num_beams: 32
+  lidar_num_beams: 24
   lidar_max_range: 50.0
   lidar_eps: 1e-3
 
@@ -121,21 +122,32 @@ agent_config:
       ipopt.constr_viol_tol: 1.0e-1
 
 # Agent Configuration (Example for 3 agents)
+# agents:
+#   agent_0:
+#     type: 'human'
+#     # type: 'rl'         # rl, mpc, human, random
+#     # model_path: 'models/multi_agent/agent_1_model.zip' # Path for RL model
+#     start_pos_idx: 0     # Index for starting position
+#   agent_1:
+#     type: 'mpc'          # rl, mpc, human, random
+#     start_pos_idx: 3     # Index for starting position
+
+
 agents:
   agent_0:
     type: 'human'
-    # type: 'rl'           # rl, mpc, human, random
-    # model_path: 'models/multi_agent/agent_1_model.zip' # Path for RL model
-    start_pos_idx: 0     # Index for starting position
+    # model_path: 'models/multi_agent/agent_0_model.zip'
+    start_pos_idx: 0
   agent_1:
-    type: 'mpc'           # rl, mpc, human, random
-    start_pos_idx: 3     # Index for starting position
-
+    type: 'random'
+    # model_path: 'models/multi_agent/agent_1_model.zip'
+    start_pos_idx: 1
 
 # RL Hyperparameters (Example - adjust based on library/algo)
 rl:
   learning_rate: 0.0003
   discount_factor: 0.99
+  model_path: 'models/single_agent/trained_model.zip'  # Default model path for single agent
   # ... other hyperparameters
 
 # UI Configuration

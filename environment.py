@@ -442,32 +442,57 @@ class RacingEnv(gym.Env):
         self._observation_space = value
 
     def _calculate_lidar(self, agent_id, all_car_data):
+        """Calculate LiDAR distances using vectorized operations for speed."""
         num_beams = self.lidar_num_beams
         max_range = self.lidar_max_range
         eps = self.lidar_eps
         x0, y0, theta = all_car_data[agent_id]['x'], all_car_data[agent_id]['y'], all_car_data[agent_id]['theta']
-        lidar_distances = np.full(num_beams, max_range, dtype=np.float32)
+        
+        # Calculate all beam angles at once
         angles = theta + np.linspace(-np.pi, np.pi, num_beams, endpoint=False)
-        for i, ang in enumerate(angles):
-            for r in np.linspace(0, max_range, int(max_range / 100)): # Check every 0.5m for example
-                x = x0 + r * np.cos(ang)
-                y = y0 + r * np.sin(ang)
-                # Check collision with track boundary
-                if not self.track.is_on_track(x, y):
-                    lidar_distances[i] = r
-                    break
-                # Check collision with other cars (except self)
+        
+        # Use finer step size for accuracy
+        step_size = 0.4  # 40cm steps
+        num_steps = int(max_range / step_size)
+        
+        # Pre-calculate all ray distances
+        ray_distances = np.arange(0, max_range + step_size, step_size)
+        
+        # Initialize distances to max range
+        lidar_distances = np.full(num_beams, max_range, dtype=np.float32)
+        
+        # Vectorized ray casting: calculate all ray points for all beams at once
+        for step_idx, r in enumerate(ray_distances):
+            # Calculate all ray endpoints for this distance (shape: [num_beams, 2])
+            ray_x = x0 + r * np.cos(angles)  # shape: [num_beams]
+            ray_y = y0 + r * np.sin(angles)  # shape: [num_beams]
+            
+            # Vectorized track boundary check for all beams
+            on_track_mask = self.track.vectorized_is_on_track(ray_x, ray_y)
+            
+            # Find beams that hit track boundary
+            boundary_hit_mask = ~on_track_mask & (lidar_distances == max_range)
+            lidar_distances[boundary_hit_mask] = r
+            
+            # Vectorized car collision check
+            if len(self.cars) > 1:  # Only check if there are other cars
                 for other_id, other_car in self.cars.items():
                     if other_id == agent_id:
                         continue
-                    dx = x - other_car.x
-                    dy = y - other_car.y
-                    dist = np.sqrt(dx*dx + dy*dy)
-                    if dist < float(other_car.collision_radius) + eps:
-                        lidar_distances[i] = r
-                        break
-                if lidar_distances[i] < r:
-                    break
+                    
+                    # Calculate distances to other car for all beams
+                    dx = ray_x - other_car.x  # shape: [num_beams]
+                    dy = ray_y - other_car.y  # shape: [num_beams]
+                    dist_to_car = np.sqrt(dx*dx + dy*dy)  # shape: [num_beams]
+                    
+                    # Find beams that hit this car
+                    car_hit_mask = (dist_to_car < float(other_car.collision_radius) + eps) & (lidar_distances == max_range)
+                    lidar_distances[car_hit_mask] = r
+            
+            # Early termination: if all beams have found obstacles, we can stop
+            if np.all(lidar_distances < max_range):
+                break
+                    
         return torch.tensor(lidar_distances, dtype=torch.float32, device=device)
 
     def _get_obs(self):

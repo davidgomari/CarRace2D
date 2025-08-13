@@ -6,7 +6,8 @@ simulation:
   render_fps: 60
   dt: 0.1              # Simulation time step (seconds)
   mode: 'single'
-  num_agents: 1 
+  num_agents: 1
+  print_lidar: false   # Print LiDAR values for RL agents during simulation 
 
 # Training Parameters
 training:
